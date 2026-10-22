@@ -1,0 +1,2556 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DSC-01 — Disaster Survival Chamber</title>
+
+<!-- Chart.js -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<!-- Leaflet.js CSS + JS -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<!-- Socket.IO client -->
+<script src="/socket.io/socket.io.js"></script>
+<!-- Google Fonts -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+
+<style>
+:root{
+  --bg:#04070b;
+  --bg-2:#070c13;
+  --panel:rgba(18,26,36,0.6);
+  --panel-solid:#0d1520;
+  --border:rgba(140,180,210,0.14);
+  --border-strong:rgba(140,180,210,0.28);
+  --text:#dce8ef;
+  --text-dim:#7d93a3;
+  --text-faint:#4f6070;
+  --green:#19e6a0;
+  --green-dim:rgba(25,230,160,0.14);
+  --amber:#ffb138;
+  --amber-dim:rgba(255,177,56,0.14);
+  --red:#ff4462;
+  --red-dim:rgba(255,68,98,0.14);
+  --cyan:#33c7ff;
+  --cyan-dim:rgba(51,199,255,0.14);
+  --purple:#a06bff;
+  --radius:14px;
+  --mono:'JetBrains Mono', monospace;
+  --disp:'Space Grotesk', sans-serif;
+  --body:'Inter', sans-serif;
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{
+  background:
+    radial-gradient(ellipse 1200px 600px at 15% -10%, rgba(51,199,255,0.07), transparent 60%),
+    radial-gradient(ellipse 1000px 700px at 100% 10%, rgba(25,230,160,0.05), transparent 60%),
+    var(--bg);
+  color:var(--text);
+  font-family:var(--body);
+  min-height:100vh;
+  overflow-x:hidden;
+}
+body::before{
+  content:'';position:fixed;inset:0;
+  background-image:linear-gradient(rgba(140,180,210,0.025) 1px,transparent 1px),linear-gradient(90deg,rgba(140,180,210,0.025) 1px,transparent 1px);
+  background-size:38px 38px;pointer-events:none;z-index:0;
+  mask-image:radial-gradient(ellipse 100% 100% at 50% 0%, black 0%, transparent 75%);
+}
+a{color:inherit;text-decoration:none;}
+button{font-family:inherit;cursor:pointer;}
+
+/* ===== LAYOUT ===== */
+.app{display:flex;min-height:100vh;position:relative;z-index:1;}
+.sidebar{width:230px;flex-shrink:0;background:linear-gradient(180deg,rgba(10,15,22,0.9),rgba(6,9,14,0.95));border-right:1px solid var(--border);display:flex;flex-direction:column;position:sticky;top:0;height:100vh;z-index:50;transition:transform .3s ease;}
+.brand{padding:22px 20px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;}
+.brand-mark{width:34px;height:34px;border-radius:8px;background:linear-gradient(135deg,var(--green),var(--cyan));display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-weight:700;color:#04121a;font-size:13px;flex-shrink:0;}
+.brand-text .id{font-family:var(--mono);font-size:11px;color:var(--text-dim);letter-spacing:.08em;}
+.brand-text .name{font-family:var(--disp);font-size:14px;font-weight:600;color:var(--text);}
+.navlist{list-style:none;padding:14px 10px;flex:1;overflow-y:auto;}
+.navlist li+li{margin-top:2px;}
+.navlink{display:flex;align-items:center;gap:12px;padding:11px 12px;border-radius:9px;color:var(--text-dim);font-size:13.5px;font-weight:500;border-left:2px solid transparent;transition:background .15s ease,color .15s ease;}
+.navlink svg{width:17px;height:17px;flex-shrink:0;opacity:.85;}
+.navlink:hover{background:rgba(255,255,255,0.04);color:var(--text);}
+.navlink.active{background:linear-gradient(90deg,rgba(25,230,160,0.12),transparent);color:var(--green);border-left:2px solid var(--green);}
+.navlink .badge{margin-left:auto;font-family:var(--mono);font-size:9.5px;padding:2px 6px;border-radius:20px;background:var(--red-dim);color:var(--red);display:none;}
+.navlink.alerting .badge{display:inline-block;}
+.sidebar-foot{padding:14px 18px 18px;border-top:1px solid var(--border);font-family:var(--mono);font-size:10.5px;color:var(--text-faint);display:flex;flex-direction:column;gap:6px;}
+.sidebar-foot .row{display:flex;justify-content:space-between;}
+.sidebar-foot .conn-dot{width:8px;height:8px;border-radius:50%;background:var(--red);display:inline-block;margin-right:5px;transition:background .3s;}
+.sidebar-foot .conn-dot.live{background:var(--green);}
+.sidebar-toggle{display:none;position:fixed;top:14px;left:14px;z-index:100;width:38px;height:38px;border-radius:9px;background:var(--panel-solid);border:1px solid var(--border-strong);color:var(--text);align-items:center;justify-content:center;}
+.main{flex:1;min-width:0;display:flex;flex-direction:column;}
+.topbar{display:flex;align-items:center;justify-content:space-between;padding:18px 30px;border-bottom:1px solid var(--border);background:rgba(6,10,16,0.55);backdrop-filter:blur(10px);position:sticky;top:0;z-index:40;gap:20px;flex-wrap:wrap;}
+.topbar-title h1{font-family:var(--disp);font-size:19px;font-weight:700;letter-spacing:.01em;line-height:1.25;}
+.topbar-title h1 span{color:var(--green);}
+.topbar-title p{font-family:var(--mono);font-size:11px;color:var(--text-dim);letter-spacing:.14em;margin-top:3px;}
+.topbar-meta{display:flex;align-items:center;gap:18px;flex-wrap:wrap;}
+.meta-item{text-align:right;}
+.meta-item .label{font-family:var(--mono);font-size:9.5px;color:var(--text-faint);letter-spacing:.1em;}
+.meta-item .value{font-family:var(--mono);font-size:13.5px;color:var(--text);font-weight:600;}
+.status-chip{display:flex;align-items:center;gap:7px;padding:7px 13px;border-radius:20px;background:var(--green-dim);border:1px solid rgba(25,230,160,0.3);font-family:var(--mono);font-size:11.5px;font-weight:600;color:var(--green);}
+.status-chip .dot{width:7px;height:7px;border-radius:50%;background:currentColor;animation:pulse-dot 1.6s ease-in-out infinite;}
+@keyframes pulse-dot{0%,100%{opacity:1;}50%{opacity:.5;}}
+body.emergency .status-chip{background:var(--red-dim);border-color:rgba(255,68,98,0.4);color:var(--red);}
+.content{padding:26px 30px 60px;position:relative;}
+.view{display:none;animation:fadein .35s ease;}
+.view.active{display:block;}
+@keyframes fadein{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:translateY(0);}}
+.view-head{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:18px;flex-wrap:wrap;gap:8px;}
+.view-head h2{font-family:var(--disp);font-size:15px;letter-spacing:.06em;color:var(--text-dim);text-transform:uppercase;}
+.view-head .sub{font-family:var(--mono);font-size:11px;color:var(--text-faint);}
+
+/* ===== CARDS ===== */
+.card{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);backdrop-filter:blur(14px);position:relative;padding:18px 20px;}
+.card::before,.card::after{content:'';position:absolute;width:9px;height:9px;border-color:var(--border-strong);border-style:solid;opacity:.9;}
+.card::before{top:-1px;left:-1px;border-width:1px 0 0 1px;border-top-left-radius:4px;}
+.card::after{bottom:-1px;right:-1px;border-width:0 1px 1px 0;border-bottom-right-radius:4px;}
+.grid-6{display:grid;grid-template-columns:repeat(6,1fr);gap:16px;}
+.grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;}
+.grid-2{display:grid;grid-template-columns:2fr 1fr;gap:16px;}
+.grid-4{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;}
+.stat-card .k{font-family:var(--mono);font-size:9.5px;letter-spacing:.1em;color:var(--text-faint);display:flex;justify-content:space-between;align-items:center;}
+.stat-card .k svg{width:13px;height:13px;opacity:.7;}
+.stat-card .v{font-family:var(--disp);font-size:26px;font-weight:700;margin-top:9px;letter-spacing:-0.01em;}
+.stat-card .v small{font-size:13px;color:var(--text-dim);font-weight:500;}
+.stat-card .foot{margin-top:8px;font-size:11px;color:var(--text-dim);display:flex;align-items:center;gap:6px;}
+.pill{font-family:var(--mono);font-size:9.5px;padding:2px 7px;border-radius:20px;font-weight:600;letter-spacing:.03em;}
+.pill.ok{background:var(--green-dim);color:var(--green);}
+.pill.warn{background:var(--amber-dim);color:var(--amber);}
+.pill.crit{background:var(--red-dim);color:var(--red);}
+.pill.info{background:var(--cyan-dim);color:var(--cyan);}
+.v.green{color:var(--green);}
+.v.red{color:var(--red);}
+.v.amber{color:var(--amber);}
+
+/* battery ring */
+.ring-wrap{position:relative;width:52px;height:52px;}
+.ring-wrap svg{transform:rotate(-90deg);}
+.ring-wrap .ring-bg{fill:none;stroke:rgba(255,255,255,0.08);stroke-width:5;}
+.ring-wrap .ring-fg{fill:none;stroke:var(--green);stroke-width:5;stroke-linecap:round;transition:stroke-dashoffset 1s ease;}
+.ring-label{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:11px;font-weight:700;}
+.card-title{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px;}
+.card-title h3{font-family:var(--disp);font-size:14.5px;font-weight:600;display:flex;align-items:center;gap:9px;}
+.card-title h3 .ic{width:17px;height:17px;color:var(--cyan);}
+.card-title .tag{font-family:var(--mono);font-size:10px;padding:4px 10px;border-radius:20px;background:var(--cyan-dim);color:var(--cyan);border:1px solid rgba(51,199,255,0.25);}
+.pbar-row{margin-bottom:13px;}
+.pbar-row:last-child{margin-bottom:0;}
+.pbar-label{display:flex;justify-content:space-between;font-size:12px;margin-bottom:6px;}
+.pbar-label .name{display:flex;align-items:center;gap:7px;color:var(--text);}
+.pbar-label .name .dot{width:7px;height:7px;border-radius:2px;}
+.pbar-label .pct{font-family:var(--mono);color:var(--text-dim);}
+.pbar-track{height:7px;border-radius:5px;background:rgba(255,255,255,0.06);overflow:hidden;}
+.pbar-fill{height:100%;border-radius:5px;transition:width .8s cubic-bezier(.4,0,.2,1);}
+.row-2{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+.row-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;}
+.stack{display:flex;flex-direction:column;gap:16px;}
+
+/* chamber visual */
+.chamber-wrap{display:flex;justify-content:center;align-items:center;padding:30px 10px 10px;position:relative;}
+.chamber-ring{position:relative;width:260px;height:260px;display:flex;align-items:center;justify-content:center;}
+.chamber-ring svg{position:absolute;inset:0;transform:rotate(-90deg);}
+.chamber-ring .ring-track{fill:none;stroke:rgba(255,255,255,0.06);stroke-width:3;}
+.chamber-ring .ring-glow{fill:none;stroke:var(--green);stroke-width:3;stroke-dasharray:6 4;animation:spin 12s linear infinite;filter:drop-shadow(0 0 6px var(--green));}
+body.emergency .chamber-ring .ring-glow{stroke:var(--red);filter:drop-shadow(0 0 8px var(--red));}
+@keyframes spin{to{transform:rotate(360deg);}}
+.chamber-svg{width:150px;height:150px;position:relative;z-index:2;filter:drop-shadow(0 4px 24px rgba(25,230,160,0.25));}
+body.emergency .chamber-svg{filter:drop-shadow(0 4px 24px rgba(255,68,98,0.35));}
+.chamber-meta{text-align:center;margin-top:14px;}
+.chamber-meta .id{font-family:var(--mono);font-size:11px;color:var(--text-faint);letter-spacing:.14em;}
+.chamber-meta .status{font-family:var(--disp);font-size:22px;font-weight:700;color:var(--green);margin-top:4px;}
+body.emergency .chamber-meta .status{color:var(--red);}
+.chamber-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:22px;}
+.chamber-stats .cs{text-align:center;padding:10px 6px;border-radius:10px;background:rgba(255,255,255,0.03);border:1px solid var(--border);}
+.chamber-stats .cs .l{font-family:var(--mono);font-size:9px;color:var(--text-faint);letter-spacing:.06em;}
+.chamber-stats .cs .n{font-family:var(--mono);font-size:14px;font-weight:600;margin-top:4px;}
+
+/* sensors */
+.sensor{display:flex;align-items:center;gap:13px;padding:13px 0;border-bottom:1px solid var(--border);}
+.sensor:last-child{border-bottom:none;}
+.sensor-dot{width:11px;height:11px;border-radius:50%;flex-shrink:0;position:relative;}
+.sensor-dot::after{content:'';position:absolute;inset:-5px;border-radius:50%;border:1px solid currentColor;opacity:.4;animation:sensor-pulse 2s ease-out infinite;}
+@keyframes sensor-pulse{0%{transform:scale(.7);opacity:.6;}100%{transform:scale(1.7);opacity:0;}}
+.sensor-dot.ok{background:var(--green);color:var(--green);}
+.sensor-dot.warn{background:var(--amber);color:var(--amber);}
+.sensor-dot.crit{background:var(--red);color:var(--red);}
+.sensor-body{flex:1;}
+.sensor-body .n{font-size:13px;font-weight:600;}
+.sensor-body .d{font-family:var(--mono);font-size:11px;color:var(--text-dim);margin-top:2px;}
+
+/* alerts */
+.alert-item{display:flex;gap:11px;padding:12px 0;border-bottom:1px solid var(--border);}
+.alert-item:last-child{border-bottom:none;}
+.alert-ic{width:26px;height:26px;border-radius:7px;flex-shrink:0;display:flex;align-items:center;justify-content:center;}
+.alert-ic svg{width:14px;height:14px;}
+.alert-ic.ok{background:var(--green-dim);color:var(--green);}
+.alert-ic.warn{background:var(--amber-dim);color:var(--amber);}
+.alert-ic.crit{background:var(--red-dim);color:var(--red);}
+.alert-txt .t{font-size:12.5px;font-weight:600;letter-spacing:.02em;}
+.alert-txt .d{font-family:var(--mono);font-size:11px;color:var(--text-dim);margin-top:2px;}
+
+/* essentials */
+.ess-row{margin-bottom:14px;}
+.ess-row:last-child{margin-bottom:0;}
+.ess-top{display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:6px;}
+.ess-top .n{font-weight:600;}
+.ess-top .p{font-family:var(--mono);color:var(--text-dim);}
+.ess-bottom{font-family:var(--mono);font-size:10px;color:var(--text-faint);margin-top:5px;}
+
+/* buttons */
+.btn{padding:10px 18px;border-radius:9px;border:1px solid var(--border-strong);background:rgba(255,255,255,0.03);color:var(--text);font-size:12.5px;font-weight:600;display:inline-flex;align-items:center;gap:8px;transition:all .15s ease;}
+.btn:hover{background:rgba(255,255,255,0.07);border-color:rgba(255,255,255,0.3);}
+.btn.primary{background:linear-gradient(135deg,rgba(25,230,160,0.18),rgba(51,199,255,0.1));border-color:rgba(25,230,160,0.4);color:var(--green);}
+.btn.primary:hover{background:linear-gradient(135deg,rgba(25,230,160,0.28),rgba(51,199,255,0.16));}
+.btn.ghost-cyan{color:var(--cyan);border-color:rgba(51,199,255,0.35);background:var(--cyan-dim);}
+.btn svg{width:14px;height:14px;}
+.btn:disabled{opacity:.5;cursor:not-allowed;}
+.scenario-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;}
+@media(max-width:640px){.scenario-grid{grid-template-columns:repeat(2,1fr);}}
+.scenario-btn{padding:14px 10px;border-radius:10px;border:1px solid var(--border);background:rgba(255,255,255,0.025);color:var(--text-dim);display:flex;flex-direction:column;align-items:center;gap:7px;font-size:11.5px;font-weight:600;text-align:center;}
+.scenario-btn svg{width:20px;height:20px;}
+.scenario-btn:hover{border-color:var(--border-strong);color:var(--text);background:rgba(255,255,255,0.05);}
+.scenario-btn.active{border-color:var(--red);color:var(--red);background:var(--red-dim);}
+.scenario-btn[data-scn="normal"].active{border-color:var(--green);color:var(--green);background:var(--green-dim);}
+
+/* SOS */
+.sos-panel{display:flex;flex-direction:column;align-items:center;gap:14px;padding:30px 20px;}
+.sos-btn{width:150px;height:150px;border-radius:50%;background:radial-gradient(circle at 35% 30%,rgba(255,68,98,0.9),rgba(190,20,50,0.95));border:3px solid rgba(255,90,110,0.6);color:#fff;font-family:var(--disp);font-weight:700;font-size:16px;letter-spacing:.03em;display:flex;align-items:center;justify-content:center;text-align:center;animation:sos-glow 2.2s ease-in-out infinite;}
+@keyframes sos-glow{0%,100%{box-shadow:0 0 0 0 rgba(255,68,98,0.45),0 10px 40px rgba(255,68,98,0.25);}50%{box-shadow:0 0 0 16px rgba(255,68,98,0),0 10px 50px rgba(255,68,98,0.4);}}
+.sos-btn:active{transform:scale(.96);}
+.sos-note{font-family:var(--mono);font-size:11px;color:var(--text-faint);text-align:center;max-width:220px;}
+
+/* ===== LEAFLET MAP ===== */
+.map-wrap{position:relative;height:320px;border-radius:11px;overflow:hidden;border:1px solid var(--border);}
+#liveMap{width:100%;height:100%;background:#060a10;}
+.map-tag{position:absolute;bottom:10px;left:10px;z-index:500;font-family:var(--mono);font-size:10px;color:var(--text-dim);background:rgba(4,7,11,0.85);padding:4px 9px;border-radius:6px;border:1px solid var(--border);pointer-events:none;}
+/* Leaflet dark overrides */
+.leaflet-tile{filter:brightness(0.45) saturate(0.6) hue-rotate(180deg);}
+.leaflet-control-attribution{background:rgba(4,7,11,0.7)!important;color:var(--text-faint)!important;font-size:9px!important;}
+.leaflet-control-zoom a{background:rgba(10,16,22,0.9)!important;color:var(--text)!important;border-color:var(--border)!important;}
+/* Pulse ring for SOS beacon on map */
+@keyframes map-pulse{0%{transform:scale(.4);opacity:1;}100%{transform:scale(2.5);opacity:0;}}
+.beacon-pulse{border-radius:50%;background:rgba(25,230,160,0.35);animation:map-pulse 2s ease-out infinite;}
+.beacon-pulse.emergency{background:rgba(255,68,98,0.5);}
+
+/* comms table */
+.comms-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;}
+.comms-cell{padding:11px 14px;border-radius:10px;background:rgba(255,255,255,0.03);border:1px solid var(--border);}
+.comms-cell .cl{font-family:var(--mono);font-size:9px;color:var(--text-faint);letter-spacing:.06em;}
+.comms-cell .cv{font-family:var(--mono);font-size:13px;font-weight:600;margin-top:4px;color:var(--cyan);}
+
+/* history table */
+.table-wrap{overflow-x:auto;}
+table{width:100%;border-collapse:collapse;font-size:12.5px;}
+thead th{text-align:left;font-family:var(--mono);font-size:10px;letter-spacing:.08em;color:var(--text-faint);padding:10px 12px;border-bottom:1px solid var(--border-strong);text-transform:uppercase;}
+tbody td{padding:11px 12px;border-bottom:1px solid var(--border);color:var(--text-dim);}
+tbody tr:hover{background:rgba(255,255,255,0.02);}
+tbody td:first-child{font-family:var(--mono);color:var(--text);}
+tbody td:last-child{text-align:right;}
+
+/* settings */
+.settings-row{display:flex;justify-content:space-between;align-items:center;padding:14px 0;border-bottom:1px solid var(--border);}
+.settings-row:last-child{border-bottom:none;}
+.settings-row .l .t{font-size:13px;font-weight:600;}
+.settings-row .l .d{font-family:var(--mono);font-size:11px;color:var(--text-faint);margin-top:3px;}
+.switch{width:42px;height:23px;border-radius:20px;background:rgba(255,255,255,0.08);position:relative;flex-shrink:0;transition:background .2s;cursor:pointer;}
+.switch.on{background:var(--green);}
+.switch::after{content:'';position:absolute;width:17px;height:17px;border-radius:50%;background:#fff;top:3px;left:3px;transition:left .2s;}
+.switch.on::after{left:22px;}
+
+/* Settings topics & extended controls */
+.topic-nav{display:flex;gap:8px;overflow-x:auto;padding-bottom:12px;margin-bottom:18px;border-bottom:1px solid var(--border);scrollbar-width:thin;}
+.topic-btn{padding:7px 14px;border-radius:20px;background:rgba(255,255,255,0.04);border:1px solid var(--border);font-family:var(--mono);font-size:11px;color:var(--text-dim);cursor:pointer;white-space:nowrap;transition:all .2s;display:inline-flex;align-items:center;gap:6px;}
+.topic-btn:hover{border-color:var(--cyan);color:var(--text);}
+.topic-btn.active{background:rgba(51,199,255,0.14);border-color:var(--cyan);color:#fff;box-shadow:0 0 12px rgba(51,199,255,0.2);}
+.settings-topic-card{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:20px 22px;margin-bottom:18px;transition:border-color .2s,box-shadow .2s;}
+.settings-topic-card:hover{border-color:rgba(255,255,255,0.18);}
+.settings-topic-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid var(--border);}
+.settings-topic-head .th-left{display:flex;align-items:center;gap:11px;}
+.settings-topic-head .th-icon{width:34px;height:34px;border-radius:9px;background:rgba(51,199,255,0.08);color:var(--cyan);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;}
+.settings-topic-head h3{font-family:var(--disp);font-size:14.5px;font-weight:700;margin:0;letter-spacing:.02em;}
+.settings-topic-head .th-sub{font-family:var(--mono);font-size:10px;color:var(--text-faint);margin-top:2px;letter-spacing:.05em;}
+.settings-select{background:rgba(12,18,24,0.9);border:1px solid var(--border-strong);color:var(--text);padding:6px 12px;border-radius:8px;font-family:var(--mono);font-size:11.5px;outline:none;cursor:pointer;transition:border-color .2s;}
+.settings-select:focus{border-color:var(--cyan);box-shadow:0 0 8px rgba(51,199,255,0.25);}
+.settings-slider-wrap{display:flex;align-items:center;gap:10px;}
+.settings-slider{-webkit-appearance:none;appearance:none;width:120px;height:5px;border-radius:3px;background:rgba(255,255,255,0.15);outline:none;}
+.settings-slider::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:16px;height:16px;border-radius:50%;background:var(--cyan);cursor:pointer;box-shadow:0 0 8px var(--cyan);}
+.slider-val-badge{font-family:var(--mono);font-size:11px;padding:2px 8px;border-radius:6px;background:rgba(51,199,255,0.12);color:var(--cyan);border:1px solid rgba(51,199,255,0.3);min-width:38px;text-align:center;}
+.settings-actions-bar{display:flex;flex-wrap:wrap;gap:10px;margin-top:16px;padding-top:14px;border-top:1px dashed var(--border);}
+.db-stat-pill{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:11px;padding:5px 12px;border-radius:8px;background:rgba(160,107,255,0.1);color:#c4a2ff;border:1px solid rgba(160,107,255,0.25);}
+
+/* Tactical Theme overrides */
+body.theme-amber {
+  --cyan: #ffaa00;
+  --green: #ffb703;
+  --panel: rgba(22, 17, 10, 0.72);
+  --panel-solid: #15110a;
+  --border: rgba(255, 170, 0, 0.18);
+  --border-strong: rgba(255, 170, 0, 0.35);
+}
+body.theme-emerald {
+  --cyan: #10b981;
+  --green: #059669;
+  --panel: rgba(8, 20, 15, 0.72);
+  --panel-solid: #06150f;
+  --border: rgba(16, 185, 129, 0.18);
+  --border-strong: rgba(16, 185, 129, 0.35);
+}
+body.theme-stealth {
+  --cyan: #94a3b8;
+  --green: #64748b;
+  --panel: rgba(15, 15, 18, 0.75);
+  --panel-solid: #0d0d10;
+  --border: rgba(148, 163, 184, 0.15);
+  --border-strong: rgba(148, 163, 184, 0.3);
+}
+
+/* AI panel */
+.ai-box{background:linear-gradient(135deg,rgba(51,199,255,0.07),rgba(25,230,160,0.05));border:1px solid rgba(51,199,255,0.25);border-radius:11px;padding:16px 18px;margin-top:14px;}
+.ai-box .lbl{font-family:var(--mono);font-size:10px;color:var(--cyan);letter-spacing:.1em;}
+.ai-box p{font-size:13px;margin-top:7px;line-height:1.5;color:var(--text);}
+.mini-chart{height:52px;margin-top:10px;}
+.mini-chart canvas{width:100%!important;height:100%!important;}
+
+/* DB badge */
+.db-badge{font-family:var(--mono);font-size:9px;padding:2px 7px;border-radius:4px;background:rgba(160,107,255,0.15);color:var(--purple);border:1px solid rgba(160,107,255,0.3);margin-left:8px;}
+
+/* toasts */
+.toast-stack{position:fixed;bottom:22px;right:22px;z-index:200;display:flex;flex-direction:column;gap:10px;max-width:320px;}
+.toast{background:rgba(10,16,22,0.95);border:1px solid var(--border-strong);border-left:3px solid var(--cyan);border-radius:9px;padding:12px 15px;font-size:12.5px;backdrop-filter:blur(10px);animation:toast-in .3s ease,toast-out .3s ease 3.7s forwards;box-shadow:0 8px 30px rgba(0,0,0,0.4);}
+.toast.ok{border-left-color:var(--green);}
+.toast.warn{border-left-color:var(--amber);}
+.toast.crit{border-left-color:var(--red);}
+.toast .tt{font-weight:600;margin-bottom:2px;}
+.toast .td{color:var(--text-dim);font-size:11.5px;}
+@keyframes toast-in{from{opacity:0;transform:translateX(30px);}to{opacity:1;transform:translateX(0);}}
+/* Flood SAR & Human Search styles */
+.sar-search-bar{display:flex;gap:12px;align-items:center;background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:12px 16px;margin-bottom:14px;}
+.sar-search-input{flex:1;background:transparent;border:none;color:var(--text);font-size:13.5px;outline:none;font-family:var(--sans);}
+.sar-search-input::placeholder{color:var(--text-faint);}
+.sar-filter-nav{display:flex;gap:8px;overflow-x:auto;padding-bottom:10px;margin-bottom:18px;scrollbar-width:thin;}
+.sar-filter-btn{padding:6px 14px;border-radius:20px;background:rgba(255,255,255,0.04);border:1px solid var(--border);font-family:var(--mono);font-size:11px;color:var(--text-dim);cursor:pointer;white-space:nowrap;transition:all .2s;display:inline-flex;align-items:center;gap:6px;}
+.sar-filter-btn:hover{border-color:var(--cyan);color:var(--text);}
+.sar-filter-btn.active{background:rgba(51,199,255,0.15);border-color:var(--cyan);color:#fff;box-shadow:0 0 10px rgba(51,199,255,0.25);}
+.survivors-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:16px;}
+.survivor-card{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:18px 20px;transition:all .25s ease;position:relative;overflow:hidden;}
+.survivor-card:hover{border-color:rgba(51,199,255,0.4);transform:translateY(-2px);box-shadow:0 8px 25px rgba(0,0,0,0.35);}
+.survivor-card.status-trapped{border-left:3px solid var(--red);}
+.survivor-card.status-dispatched{border-left:3px solid var(--amber);}
+.survivor-card.status-inchamber{border-left:3px solid var(--green);}
+.survivor-card.status-critical{border-left:3px solid var(--purple);}
+.sc-head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px;}
+.sc-user{display:flex;align-items:center;gap:12px;}
+.sc-avatar{width:40px;height:40px;border-radius:10px;background:rgba(51,199,255,0.12);color:var(--cyan);font-family:var(--disp);font-weight:700;font-size:14px;display:flex;align-items:center;justify-content:center;border:1px solid rgba(51,199,255,0.3);flex-shrink:0;}
+.sc-avatar.trapped{background:rgba(255,68,98,0.15);color:var(--red);border-color:rgba(255,68,98,0.35);}
+.sc-avatar.inchamber{background:rgba(25,230,160,0.15);color:var(--green);border-color:rgba(25,230,160,0.35);}
+.sc-avatar.dispatched{background:rgba(255,170,0,0.15);color:var(--amber);border-color:rgba(255,170,0,0.35);}
+.sc-avatar.critical{background:rgba(160,107,255,0.15);color:var(--purple);border-color:rgba(160,107,255,0.35);}
+.sc-name{font-size:14.5px;font-weight:700;color:var(--text);}
+.sc-rfid{font-family:var(--mono);font-size:10px;color:var(--text-faint);margin-top:2px;}
+.sc-tags{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0;}
+.sc-tag{font-family:var(--mono);font-size:10px;padding:3px 8px;border-radius:6px;background:rgba(255,255,255,0.05);border:1px solid var(--border);color:var(--text-dim);}
+.sc-tag.blood{background:rgba(255,68,98,0.1);color:#ff94a4;border-color:rgba(255,68,98,0.25);}
+.sc-tag.water{background:rgba(51,199,255,0.1);color:var(--cyan);border-color:rgba(51,199,255,0.25);}
+.sc-tag.med{background:rgba(255,170,0,0.1);color:#ffd080;border-color:rgba(255,170,0,0.25);}
+.sc-details{font-size:12px;color:var(--text-dim);line-height:1.45;margin-bottom:12px;padding:9px 12px;border-radius:8px;background:rgba(0,0,0,0.25);border:1px solid rgba(255,255,255,0.04);}
+.sc-details .row-item{display:flex;justify-content:space-between;margin-bottom:4px;gap:8px;}
+.sc-details .row-item:last-child{margin-bottom:0;}
+.sc-details .k{font-family:var(--mono);font-size:10px;color:var(--text-faint);white-space:nowrap;}
+.sc-details .v{text-align:right;color:var(--text);}
+.sc-actions{display:flex;gap:8px;margin-top:12px;padding-top:10px;border-top:1px dashed var(--border);}
+.sc-actions .btn{flex:1;font-size:11px;padding:6px 8px;justify-content:center;}
+
+/* Direct Human Entry Form Card */
+.sar-entry-card{background:linear-gradient(135deg,rgba(16,30,45,0.7),rgba(9,20,32,0.9));border:1px solid rgba(51,199,255,0.35);border-radius:14px;padding:20px 22px;margin-bottom:20px;box-shadow:0 10px 35px rgba(0,0,0,0.35);}
+.sar-entry-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid var(--border);}
+.sar-entry-head h3{font-family:var(--disp);font-size:15px;font-weight:700;margin:0;letter-spacing:.02em;color:var(--text);display:flex;align-items:center;gap:8px;}
+.sar-entry-head .sub-t{font-family:var(--mono);font-size:10px;color:var(--text-faint);margin-top:2px;}
+.sar-entry-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px 14px;margin-bottom:16px;}
+.sar-form-group{display:flex;flex-direction:column;gap:5px;}
+.sar-form-group label{font-family:var(--mono);font-size:10px;letter-spacing:.07em;color:var(--cyan);font-weight:600;}
+.sar-input{background:rgba(10,16,24,0.9);border:1px solid var(--border-strong);color:var(--text);padding:8px 12px;border-radius:8px;font-family:var(--sans);font-size:12.5px;outline:none;transition:border-color .2s,box-shadow .2s;}
+.sar-input:focus{border-color:var(--cyan);box-shadow:0 0 10px rgba(51,199,255,0.25);}
+
+/* modal */
+.modal-overlay{position:fixed;inset:0;background:rgba(2,4,7,0.7);backdrop-filter:blur(4px);display:none;align-items:center;justify-content:center;z-index:300;padding:20px;}
+.modal-overlay.show{display:flex;}
+.modal{width:100%;max-width:420px;background:var(--panel-solid);border:1px solid rgba(255,68,98,0.35);border-radius:16px;padding:26px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,0.5);}
+.modal .mi{width:52px;height:52px;border-radius:50%;background:var(--red-dim);display:flex;align-items:center;justify-content:center;margin:0 auto 16px;}
+.modal .mi svg{width:26px;height:26px;color:var(--red);}
+.modal h3{font-family:var(--disp);font-size:18px;margin-bottom:8px;}
+.modal p{font-size:13px;color:var(--text-dim);line-height:1.5;margin-bottom:22px;}
+.modal-actions{display:flex;gap:10px;}
+.modal-actions .btn{flex:1;justify-content:center;}
+.btn.danger{background:linear-gradient(135deg,rgba(255,68,98,0.3),rgba(255,68,98,0.15));border-color:rgba(255,68,98,0.5);color:#ffb0bd;}
+
+/* responsive */
+@media(max-width:1180px){.grid-6{grid-template-columns:repeat(3,1fr);}.grid-4{grid-template-columns:repeat(2,1fr);}}
+@media(max-width:980px){.grid-2,.row-2{grid-template-columns:1fr;}}
+@media(max-width:860px){.sidebar{position:fixed;left:0;top:0;transform:translateX(-100%);box-shadow:20px 0 60px rgba(0,0,0,0.5);}.sidebar.open{transform:translateX(0);}.sidebar-toggle{display:flex;}.content{padding:20px 16px 50px;}.topbar{padding:16px 16px 16px 62px;}.grid-6{grid-template-columns:repeat(2,1fr);}.grid-3{grid-template-columns:1fr;}.row-3{grid-template-columns:1fr;}.scenario-grid{grid-template-columns:repeat(2,1fr);}}
+@media(max-width:480px){.grid-6,.grid-4{grid-template-columns:repeat(2,1fr);}.topbar-meta{gap:12px;}}
+.overlay-scrim{position:fixed;inset:0;background:transparent;z-index:45;display:none;}
+.overlay-scrim.show{display:block;}
+</style>
+</head>
+<body>
+
+<button class="sidebar-toggle" id="sidebarToggle" aria-label="Toggle navigation">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
+</button>
+<div class="overlay-scrim" id="scrim"></div>
+
+<div class="app">
+  <!-- SIDEBAR -->
+  <aside class="sidebar" id="sidebar">
+    <div class="brand">
+      <div class="brand-mark">DSC</div>
+      <div class="brand-text">
+        <div class="name">DSC&#8209;01 Console</div>
+        <div class="id">CHAMBER UNIT 01</div>
+      </div>
+    </div>
+    <ul class="navlist">
+      <li><a href="#" class="navlink active" data-view="dashboard">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>
+        Dashboard</a></li>
+      <li><a href="#" class="navlink" data-view="power">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M13 2 4 14h6l-1 8 9-12h-6z"/></svg>
+        Power System</a></li>
+      <li><a href="#" class="navlink" data-view="life">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 1 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8z"/></svg>
+        Life Support</a></li>
+      <li><a href="#" class="navlink" data-view="safety">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 22s8-4 8-11V5l-8-3-8 3v6c0 7 8 11 8 11z"/></svg>
+        Safety Monitoring <span class="badge" id="safetyBadge">!</span></a></li>
+      <li><a href="#" class="navlink" data-view="flood">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/><path d="M2 17c2 .67 4 0 6 .67 2 .66 4 0 6 .66 2 .67 4 0 6 .67"/></svg>
+        Flood SAR &amp; Humans <span class="badge ok" id="sarCountBadge" style="background:var(--cyan);color:#020b12;">6</span></a></li>
+      <li><a href="#" class="navlink" data-view="comms">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 12.5a7 7 0 0 1 14 0M8.5 15.8a3.2 3.2 0 0 1 7 0M12 19v.01"/></svg>
+        Communication</a></li>
+      <li><a href="#" class="navlink" data-view="emergency">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4m0 4h.01M10.3 3.9 2.5 17a2 2 0 0 0 1.7 3h15.6a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+        Emergency Control</a></li>
+      <li><a href="#" class="navlink" data-view="history">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 12a9 9 0 1 0 3-6.7M3 5v5h5M12 8v5l4 2"/></svg>
+        History Logs</a></li>
+      <li><a href="#" class="navlink" data-view="settings">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+        Settings</a></li>
+    </ul>
+    <div class="sidebar-foot">
+      <div class="row"><span>FIRMWARE</span><span>v2.4.1</span></div>
+      <div class="row"><span>UPTIME</span><span id="uptimeVal">00:00:00</span></div>
+      <div class="row"><span><span class="conn-dot" id="connDot"></span>SERVER</span><span id="connStatus">OFFLINE</span></div>
+      <div class="row"><span>DATABASE</span><span class="db-badge">SQLite</span></div>
+    </div>
+  </aside>
+
+  <!-- MAIN -->
+  <main class="main">
+    <header class="topbar">
+      <div class="topbar-title">
+        <h1>INTELLIGENT POWER-MANAGED <span>DISASTER SURVIVAL CHAMBER</span></h1>
+        <p>CONTROL &amp; MONITORING DASHBOARD &mdash; LIVE BACKEND</p>
+      </div>
+      <div class="topbar-meta">
+        <div class="meta-item"><div class="label">DATE</div><div class="value" id="dateVal">--</div></div>
+        <div class="meta-item"><div class="label">TIME</div><div class="value" id="timeVal">--:--:--</div></div>
+        <div class="status-chip" id="statusChip"><span class="dot"></span><span id="statusChipText">CONNECTING</span></div>
+      </div>
+    </header>
+
+    <div class="content">
+
+      <!-- DASHBOARD VIEW -->
+      <section class="view active" id="view-dashboard">
+        <div class="view-head"><h2>System Overview</h2><span class="sub">LIVE TELEMETRY &middot; REAL-TIME BACKEND</span></div>
+
+        <div class="grid-6" style="margin-bottom:16px;">
+          <div class="card stat-card">
+            <div class="k">OVERALL STATUS<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 22s8-4 8-11V5l-8-3-8 3v6c0 7 8 11 8 11z"/></svg></div>
+            <div class="v green" id="overallStatusVal">SAFE</div>
+            <div class="foot"><span class="pill ok" id="overallPill">NOMINAL</span></div>
+          </div>
+          <div class="card stat-card">
+            <div class="k">PEOPLE INSIDE<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="8" r="3.2"/><path d="M2.5 20c0-3.5 3-6 6.5-6s6.5 2.5 6.5 6"/><circle cx="18" cy="9" r="2.4"/><path d="M15.7 14.2c2.6.3 4.8 2.4 4.8 5.3"/></svg></div>
+            <div class="v" id="occupancyVal">04 <small>/ 06</small></div>
+            <div class="foot">Occupancy</div>
+          </div>
+          <div class="card stat-card">
+            <div class="k">SURVIVAL TIME<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></div>
+            <div class="v" id="survivalVal">72 <small>hrs</small></div>
+            <div class="foot" id="survivalFoot">Estimated capacity</div>
+          </div>
+          <div class="card stat-card">
+            <div class="k">BATTERY LEVEL<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="8" width="17" height="8" rx="1.5"/><path d="M21 10.5v3"/></svg></div>
+            <div style="display:flex;align-items:center;justify-content:space-between;">
+              <div class="v" id="batteryVal" style="margin-top:9px;">78%</div>
+              <div class="ring-wrap">
+                <svg viewBox="0 0 52 52"><circle class="ring-bg" cx="26" cy="26" r="21"/><circle class="ring-fg" id="batteryRing" cx="26" cy="26" r="21" stroke-dasharray="132" stroke-dashoffset="30"/></svg>
+              </div>
+            </div>
+            <div class="foot" id="chargeFoot">Charging &middot; +320W solar</div>
+          </div>
+          <div class="card stat-card" id="cardTemp" style="cursor:pointer;" title="Click to trigger backend Temperature Check workflow">
+            <div class="k">INTERNAL TEMP<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2a3 3 0 0 0-3 3v9.3a5 5 0 1 0 6 0V5a3 3 0 0 0-3-3z"/></svg></div>
+            <div class="v" id="tempVal">24.6&deg;C</div>
+            <div class="foot"><span class="pill ok" id="tempPill">NORMAL</span></div>
+          </div>
+          <div class="card stat-card">
+            <div class="k">AIR QUALITY<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 8h11a3 3 0 1 0-2.8-4M4 16h13a3 3 0 1 1-2.8 4M4 12h16"/></svg></div>
+            <div class="v" id="aqiVal">36 <small>AQI</small></div>
+            <div class="foot"><span class="pill ok" id="aqiPill">GOOD</span></div>
+          </div>
+        </div>
+
+        <div class="row-2" style="margin-bottom:16px;">
+          <div class="card">
+            <div class="card-title"><h3><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 22s8-4 8-11V5l-8-3-8 3v6c0 7 8 11 8 11z"/></svg>Survival Chamber</h3><span class="tag" id="doorTag">DOOR LOCKED</span></div>
+            <div class="chamber-wrap">
+              <div class="chamber-ring">
+                <svg viewBox="0 0 260 260"><circle class="ring-track" cx="130" cy="130" r="118"/><circle class="ring-glow" cx="130" cy="130" r="118" stroke-dasharray="30 700"/></svg>
+                <svg class="chamber-svg" viewBox="0 0 200 220" fill="none">
+                  <rect x="20" y="30" width="160" height="160" rx="18" fill="#0d1a22" stroke="#2a4a55" stroke-width="2"/>
+                  <rect x="20" y="30" width="160" height="160" rx="18" fill="url(#chamberGrad)" opacity="0.5"/>
+                  <defs><linearGradient id="chamberGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#19e6a0" stop-opacity="0.15"/><stop offset="1" stop-color="#19e6a0" stop-opacity="0"/></linearGradient></defs>
+                  <rect x="70" y="70" width="60" height="120" rx="10" fill="#132630" stroke="#3a6672" stroke-width="1.5"/>
+                  <circle cx="118" cy="130" r="4" fill="#19e6a0"/>
+                  <rect x="82" y="82" width="36" height="26" rx="4" fill="#0a1620" stroke="#19e6a0" stroke-width="1"/>
+                  <circle cx="90" cy="93" r="2" fill="#19e6a0"/><circle cx="98" cy="93" r="2" fill="#19e6a0"/><circle cx="106" cy="93" r="2" fill="#19e6a0"/>
+                  <rect x="28" y="42" width="14" height="6" rx="2" fill="#33c7ff"/>
+                  <rect x="150" y="42" width="14" height="6" rx="2" fill="#33c7ff"/>
+                  <text x="100" y="26" text-anchor="middle" fill="#7d93a3" font-family="JetBrains Mono" font-size="11" letter-spacing="2">DSC-01</text>
+                </svg>
+              </div>
+            </div>
+            <div class="chamber-meta"><div class="id">CHAMBER STATUS</div><div class="status" id="chamberStatusVal">SECURE</div></div>
+            <div class="chamber-stats">
+              <div class="cs"><div class="l">PRESSURE</div><div class="n" id="pressureVal">1.02 atm</div></div>
+              <div class="cs"><div class="l">OXYGEN</div><div class="n" id="oxygenMini">20.8%</div></div>
+              <div class="cs"><div class="l">OCCUPANCY</div><div class="n">04/06</div></div>
+              <div class="cs"><div class="l">BATTERY</div><div class="n" id="battMini">78%</div></div>
+            </div>
+          </div>
+
+          <div class="stack">
+            <div class="card">
+              <div class="card-title"><h3><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4m0 4h.01M10.3 3.9 2.5 17a2 2 0 0 0 1.7 3h15.6a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>Disaster Detection</h3></div>
+              <div id="sensorList">
+                <div class="sensor"><div class="sensor-dot ok" id="dot-quake"></div><div class="sensor-body"><div class="n">Earthquake Sensor</div><div class="d" id="txt-quake">NO ACTIVITY</div></div></div>
+                <div class="sensor"><div class="sensor-dot ok" id="dot-water"></div><div class="sensor-body"><div class="n">Water Level</div><div class="d" id="txt-water">NORMAL &middot; 0.2m</div></div></div>
+                <div class="sensor"><div class="sensor-dot ok" id="dot-fire"></div><div class="sensor-body"><div class="n">Fire / Smoke</div><div class="d" id="txt-fire">NO THREAT</div></div></div>
+                <div class="sensor"><div class="sensor-dot ok" id="dot-gas"></div><div class="sensor-body"><div class="n">Gas Leakage</div><div class="d" id="txt-gas">NO GAS DETECTED</div></div></div>
+              </div>
+            </div>
+            <div class="card">
+              <div class="card-title"><h3><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 22s-8-5.3-8-12A8 8 0 0 1 12 3a8 8 0 0 1 8 7c0 6.7-8 12-8 12z"/><circle cx="12" cy="10" r="2.5"/></svg>Alerts &amp; Notifications</h3></div>
+              <div id="alertsList"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="row-2">
+          <div class="card">
+            <div class="card-title"><h3><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 6 9 17l-5-5"/></svg>Survival Essentials</h3></div>
+            <div class="ess-row">
+              <div class="ess-top"><span class="n">Drinking Water</span><span class="p" id="waterPct">85%</span></div>
+              <div class="pbar-track"><div class="pbar-fill" id="waterBar" style="width:85%;background:var(--cyan);"></div></div>
+              <div class="ess-bottom" id="waterEst">&#8776; 6.5 days remaining</div>
+            </div>
+            <div class="ess-row">
+              <div class="ess-top"><span class="n">Food Supply</span><span class="p" id="foodPct">72%</span></div>
+              <div class="pbar-track"><div class="pbar-fill" id="foodBar" style="width:72%;background:var(--amber);"></div></div>
+              <div class="ess-bottom" id="foodEst">&#8776; 5 days remaining</div>
+            </div>
+            <div class="ess-row">
+              <div class="ess-top"><span class="n">Medical Supplies</span><span class="p" id="medPct">90%</span></div>
+              <div class="pbar-track"><div class="pbar-fill" id="medBar" style="width:90%;background:var(--green);"></div></div>
+              <div class="ess-bottom" id="medEst">Fully stocked kit</div>
+            </div>
+            <div class="ess-row">
+              <div class="ess-top"><span class="n">Sanitation System</span><span class="p" id="sanPct">80%</span></div>
+              <div class="pbar-track"><div class="pbar-fill" id="sanBar" style="width:80%;background:var(--purple);"></div></div>
+              <div class="ess-bottom" id="sanEst">&#8776; 4 days remaining</div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-title"><h3><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 12a9 9 0 1 0 3-6.7M3 5v5h5M12 8v5l4 2"/></svg>Recent Activity <span class="db-badge">DB</span></h3></div>
+            <div class="table-wrap">
+              <table><thead><tr><th>Time</th><th>Event</th><th>Status</th></tr></thead><tbody id="historyMini"></tbody></table>
+            </div>
+          </div>
+        <!-- DIRECT HUMAN ENTRY FORM CARD -->
+        <div class="sar-entry-card" id="sarDirectEntryCard">
+          <div class="sar-entry-head">
+            <div>
+              <h3>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:17px;height:17px;color:var(--cyan);"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg>
+                Enter Person Details (Direct Registration Entry)
+              </h3>
+              <div class="sub-t">INPUT HUMAN DETAILS BELOW TO SAVE DIRECTLY INTO SQLITE &amp; LOCATE ON FLOOD RADAR</div>
+            </div>
+            <span class="db-badge">DIRECT DB WRITE</span>
+          </div>
+
+          <form id="inlineSurvivorForm">
+            <div class="sar-entry-grid">
+              <div class="sar-form-group">
+                <label>FULL NAME *</label>
+                <input type="text" class="sar-input" id="inName" required placeholder="e.g. John Doe / Elena Rostova">
+              </div>
+
+              <div class="sar-form-group">
+                <label>AGE &amp; GENDER</label>
+                <div style="display:flex;gap:6px;">
+                  <input type="number" class="sar-input" id="inAge" placeholder="Age" min="1" max="110" value="28" style="width:70px;">
+                  <select class="settings-select sar-input" id="inGender" style="flex:1;">
+                    <option value="Male">Male</option>
+                    <option value="Female">Female</option>
+                    <option value="Child">Child</option>
+                    <option value="Elderly">Elderly</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="sar-form-group">
+                <label>BLOOD GROUP</label>
+                <select class="settings-select sar-input" id="inBlood">
+                  <option value="O+">O+ (Universal RBC Recipient)</option>
+                  <option value="A+">A+</option>
+                  <option value="B+">B+</option>
+                  <option value="AB+">AB+ (Universal Plasma)</option>
+                  <option value="O-">O- (Universal Emergency Donor)</option>
+                  <option value="A-">A-</option>
+                  <option value="B-">B-</option>
+                  <option value="AB-">AB-</option>
+                </select>
+              </div>
+
+              <div class="sar-form-group">
+                <label>RESCUE STATUS</label>
+                <select class="settings-select sar-input" id="inStatus">
+                  <option value="TRAPPED">🌊 Trapped in Water / Rooftop</option>
+                  <option value="CRITICAL_TRIAGE">🚨 Critical Medical Triage</option>
+                  <option value="RESCUE_DISPATCHED">🚁 Rescue Boat / Drone En Route</option>
+                  <option value="IN_CHAMBER">🛡️ Rescued (In DSC-01 Chamber)</option>
+                </select>
+              </div>
+
+              <div class="sar-form-group">
+                <label>MEDICAL ALERTS &amp; URGENT NEEDS</label>
+                <input type="text" class="sar-input" id="inMedical" placeholder="e.g. Asthma, Diabetic Insulin Alert, Hypothermia, Fracture, None">
+              </div>
+
+              <div class="sar-form-group">
+                <label>FLOOD SECTOR / LOCATION</label>
+                <input type="text" class="sar-input" id="inSector" placeholder="e.g. Sector Bravo (Submerged Ground Basin)">
+              </div>
+
+              <div class="sar-form-group">
+                <label>WATER DEPTH (M)</label>
+                <input type="number" step="0.1" class="sar-input" id="inWaterDepth" placeholder="1.8" value="1.8">
+              </div>
+
+              <div class="sar-form-group">
+                <label>EMERGENCY CONTACT &amp; NOTES</label>
+                <input type="text" class="sar-input" id="inContact" placeholder="Phone, Next-of-kin, or radio channel">
+              </div>
+            </div>
+
+            <div style="display:flex;gap:12px;align-items:center;">
+              <button type="submit" class="btn primary" style="flex:1;justify-content:center;padding:10px 18px;font-size:13px;font-weight:700;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" style="width:16px;height:16px;"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+                + SAVE &amp; REGISTER HUMAN INTO DATABASE
+              </button>
+              <button type="reset" class="btn sm" style="padding:10px 16px;">Reset Inputs</button>
+            </div>
+          </form>
+        </div>
+
+
+        </div>
+      </section>
+
+      <!-- POWER SYSTEM VIEW -->
+      <section class="view" id="view-power">
+        <div class="view-head"><h2>Power System</h2><span class="sub">SOLAR + BATTERY MANAGEMENT</span></div>
+        <div class="card" style="margin-bottom:16px;">
+          <div class="card-title">
+            <h3><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M13 2 4 14h6l-1 8 9-12h-6z"/></svg>Power System</h3>
+            <span class="tag" id="powerModeTag">&#9889; SMART OPTIMIZED MODE</span>
+          </div>
+          <div class="grid-4" style="margin-bottom:20px;">
+            <div><div class="k" style="font-family:var(--mono);font-size:9.5px;color:var(--text-faint);letter-spacing:.1em;">SOLAR INPUT</div><div class="v" style="font-size:22px;margin-top:6px;" id="solarVal">320 W</div></div>
+            <div><div class="k" style="font-family:var(--mono);font-size:9.5px;color:var(--text-faint);letter-spacing:.1em;">BATTERY VOLTAGE</div><div class="v" style="font-size:22px;margin-top:6px;" id="voltVal">25.6 V</div></div>
+            <div><div class="k" style="font-family:var(--mono);font-size:9.5px;color:var(--text-faint);letter-spacing:.1em;">CURRENT CONSUMPTION</div><div class="v" style="font-size:22px;margin-top:6px;" id="consumptionVal">185 W</div></div>
+            <div><div class="k" style="font-family:var(--mono);font-size:9.5px;color:var(--text-faint);letter-spacing:.1em;">CHARGING STATUS</div><div class="v green" style="font-size:22px;margin-top:6px;" id="chargingVal">CHARGING</div></div>
+          </div>
+          <div class="card-title"><h3 style="font-size:13px;color:var(--text-dim);">Power Distribution &amp; Load Hierarchy</h3><span class="tag" style="background:var(--green-dim);color:var(--green);border-color:rgba(25,230,160,.3);">PRIORITIZED FOR SURVIVAL</span></div>
+          <div id="powerBars"></div>
+        </div>
+        <div class="row-2">
+          <div class="card">
+            <div class="card-title"><h3><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 19V5m4 14V9m4 10V3m4 16v-7m4 7v-4"/></svg>AI Power Optimization</h3><span class="tag">UNIQUE FEATURE</span></div>
+            <div class="grid-2" style="grid-template-columns:1fr 1fr;">
+              <div><div class="k" style="font-family:var(--mono);font-size:9.5px;color:var(--text-faint);">CURRENT LOAD</div><div class="v" style="font-size:19px;margin-top:5px;" id="aiLoad">185 W</div></div>
+              <div><div class="k" style="font-family:var(--mono);font-size:9.5px;color:var(--text-faint);">AVAILABLE POWER</div><div class="v" style="font-size:19px;margin-top:5px;" id="aiAvail">320 W</div></div>
+              <div style="margin-top:14px;"><div class="k" style="font-family:var(--mono);font-size:9.5px;color:var(--text-faint);">PREDICTED SURVIVAL</div><div class="v green" style="font-size:19px;margin-top:5px;" id="aiSurvival">72 Hours</div></div>
+              <div style="margin-top:14px;"><div class="k" style="font-family:var(--mono);font-size:9.5px;color:var(--text-faint);">ENERGY SAVING</div><div class="v green" style="font-size:19px;margin-top:5px;" id="aiSaving">18%</div></div>
+            </div>
+            <div class="ai-box">
+              <div class="lbl">AI RECOMMENDATION</div>
+              <p id="aiRecommendation">Non-critical loads are automatically reduced to extend survival time.</p>
+            </div>
+            <div style="margin-top:16px;">
+              <button class="btn primary" id="runOptimizeBtn" style="width:100%;justify-content:center;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 4 14h6l-1 8 9-12h-6z"/></svg>
+                RUN POWER OPTIMIZATION
+              </button>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-title"><h3><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 3v18h18M7 15l4-5 3 3 5-7"/></svg>Consumption Trend</h3><span class="tag">LAST 30 CYCLES</span></div>
+            <div class="mini-chart" style="height:180px;"><canvas id="powerChart"></canvas></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- LIFE SUPPORT VIEW -->
+      <section class="view" id="view-life">
+        <div class="view-head"><h2>Life Support Systems</h2><span class="sub">ENVIRONMENTAL REGULATION</span></div>
+        <div class="grid-4">
+          <div class="card"><div class="k" style="font-family:var(--mono);font-size:9.5px;color:var(--text-faint);letter-spacing:.1em;">TEMPERATURE</div><div class="v" style="font-size:22px;margin-top:7px;" id="lsTemp">24.6&deg;C</div><div class="foot"><span class="pill ok">NORMAL</span></div><div class="mini-chart"><canvas id="chartTemp"></canvas></div></div>
+          <div class="card"><div class="k" style="font-family:var(--mono);font-size:9.5px;color:var(--text-faint);letter-spacing:.1em;">HUMIDITY</div><div class="v" style="font-size:22px;margin-top:7px;" id="lsHumidity">45%</div><div class="foot"><span class="pill ok">NORMAL</span></div><div class="mini-chart"><canvas id="chartHumidity"></canvas></div></div>
+          <div class="card"><div class="k" style="font-family:var(--mono);font-size:9.5px;color:var(--text-faint);letter-spacing:.1em;">OXYGEN</div><div class="v" style="font-size:22px;margin-top:7px;" id="lsOxygen">20.8%</div><div class="foot"><span class="pill ok">NORMAL</span></div><div class="mini-chart"><canvas id="chartOxygen"></canvas></div></div>
+          <div class="card"><div class="k" style="font-family:var(--mono);font-size:9.5px;color:var(--text-faint);letter-spacing:.1em;">CO&#8322; LEVEL</div><div class="v" style="font-size:22px;margin-top:7px;" id="lsCo2">620 ppm</div><div class="foot"><span class="pill ok">SAFE</span></div><div class="mini-chart"><canvas id="chartCo2"></canvas></div></div>
+        </div>
+        <div class="row-2" style="margin-top:16px;">
+          <div class="card">
+            <div class="card-title"><h3>Air Quality</h3><span class="pill ok" id="lsAqiPill">GOOD</span></div>
+            <div class="v" style="font-size:28px;" id="lsAqiVal">36 <small style="font-size:13px;color:var(--text-dim);">AQI</small></div>
+            <p style="font-size:12px;color:var(--text-dim);margin-top:8px;">Filtration system active. Particulate and VOC levels within safe range for extended occupancy.</p>
+          </div>
+          <div class="card">
+            <div class="card-title"><h3>Ventilation</h3><span class="pill info">AUTO</span></div>
+            <div class="v" style="font-size:28px;">AUTO</div>
+            <p style="font-size:12px;color:var(--text-dim);margin-top:8px;">Rebreather cycling adjusts fan speed based on CO&#8322; and occupancy to conserve power.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- SAFETY MONITORING VIEW -->
+      <section class="view" id="view-safety">
+        <div class="view-head"><h2>Safety Monitoring</h2><span class="sub">SENSOR NETWORK &amp; SCENARIO SIMULATOR</span></div>
+        <div class="row-2" style="margin-bottom:16px;">
+          <div class="card">
+            <div class="card-title"><h3><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4m0 4h.01M10.3 3.9 2.5 17a2 2 0 0 0 1.7 3h15.6a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>Disaster Detection</h3></div>
+            <div class="sensor"><div class="sensor-dot ok" id="dot-quake2"></div><div class="sensor-body"><div class="n">Earthquake Sensor</div><div class="d" id="txt-quake2">NO ACTIVITY &middot; 0.0 Richter</div></div></div>
+            <div class="sensor"><div class="sensor-dot ok" id="dot-water2"></div><div class="sensor-body"><div class="n">Water Level</div><div class="d" id="txt-water2">NORMAL &middot; 0.2m</div></div></div>
+            <div class="sensor"><div class="sensor-dot ok" id="dot-fire2"></div><div class="sensor-body"><div class="n">Fire / Smoke</div><div class="d" id="txt-fire2">NO THREAT</div></div></div>
+            <div class="sensor"><div class="sensor-dot ok" id="dot-gas2"></div><div class="sensor-body"><div class="n">Gas Leakage</div><div class="d" id="txt-gas2">NO GAS DETECTED</div></div></div>
+          </div>
+          <div class="card">
+            <div class="card-title"><h3>Alerts &amp; Notifications</h3></div>
+            <div id="alertsList2"></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-title"><h3><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2v4M12 18v4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M2 12h4M18 12h4M4.9 19.1l2.8-2.8M16.3 7.7l2.8-2.8"/></svg>Simulate Emergency</h3><span class="sub" style="font-family:var(--mono);font-size:10.5px;color:var(--text-faint);">DEMO CONTROL PANEL &mdash; PERSISTED TO DB</span></div>
+          <div class="scenario-grid">
+            <button class="scenario-btn active" data-scn="normal"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 6 9 17l-5-5"/></svg>Normal Mode</button>
+            <button class="scenario-btn" data-scn="earthquake"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2 12h3l2-5 3 10 2-7 2 4h3l2-2h5"/></svg>Earthquake</button>
+            <button class="scenario-btn" data-scn="flood"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 12h18M3 16c2-2 4-2 6 0s4 2 6 0 4-2 6 0M8 12V7a4 4 0 0 1 8 0v5"/></svg>Flood</button>
+            <button class="scenario-btn" data-scn="fire"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2c0 6-6 8-6 14a6 6 0 0 0 12 0c0-3.5-1.5-5.5-2-8-1 2-1.5 3-3 4 0-4-2-6-1-10z"/></svg>Fire</button>
+            <button class="scenario-btn" data-scn="gas"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="10"/><path d="M12 8v4m0 4h.01"/></svg>Gas Leak</button>
+            <button class="scenario-btn" data-scn="powerfail"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M13 2 4 14h6l-1 8 9-12h-6z"/><line x1="2" y1="2" x2="22" y2="22" stroke-width="2"/></svg>Power Fail</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- COMMUNICATION VIEW -->
+      <section class="view" id="view-comms">
+        <div class="view-head"><h2>Communication &amp; Location</h2><span class="sub">REAL-TIME MAP &middot; RESCUE NETWORK</span></div>
+        <div class="row-2">
+          <div class="card">
+            <div class="card-title">
+              <h3><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 22s-8-5.3-8-12A8 8 0 0 1 12 3a8 8 0 0 1 8 7c0 6.7-8 12-8 12z"/><circle cx="12" cy="10" r="2.5"/></svg>Live Location Map</h3>
+              <span class="tag">LEAFLET + OPENSTREETMAP</span>
+            </div>
+            <div class="map-wrap">
+              <div id="liveMap"></div>
+              <div class="map-tag" id="mapCoords">SIGNAL LOCKED &middot; BEACON ACTIVE</div>
+            </div>
+            <div style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap;">
+              <button class="btn ghost-cyan" id="locateMeBtn">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>
+                Locate Me
+              </button>
+              <button class="btn primary" id="sosBtn">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4m0 4h.01M10.3 3.9 2.5 17a2 2 0 0 0 1.7 3h15.6a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+                SEND SOS
+              </button>
+            </div>
+          </div>
+          <div class="stack">
+            <div class="card">
+              <div class="card-title"><h3>Rescue Network Status</h3><span class="pill ok" id="rescueStatusPill">CONNECTED</span></div>
+              <div class="comms-grid">
+                <div class="comms-cell"><div class="cl">RESCUE STATUS</div><div class="cv" id="rescueStatus">CONNECTED</div></div>
+                <div class="comms-cell"><div class="cl">LAST COMM</div><div class="cv" id="lastComm">--:--</div></div>
+                <div class="comms-cell"><div class="cl">SIGNAL</div><div class="cv">STRONG</div></div>
+                <div class="comms-cell"><div class="cl">BEACON</div><div class="cv" id="beaconStatus">ACTIVE</div></div>
+              </div>
+            </div>
+            <div class="card">
+              <div class="card-title"><h3>SOS History <span class="db-badge">DB</span></h3></div>
+              <div id="sosHistoryList" style="font-family:var(--mono);font-size:11px;color:var(--text-dim);line-height:1.8;">No SOS events recorded.</div>
+            </div>
+            <div class="card">
+              <div class="card-title"><h3>Communications</h3></div>
+              <p style="font-size:12px;color:var(--text-dim);line-height:1.6;">Beacon transmitting on 406 MHz COSPAS-SARSAT. GPS coordinates broadcast every 30 seconds to rescue coordination centre.</p>
+              <div style="margin-top:12px;">
+                <button class="btn" id="sendSosCommsBtn">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4z"/></svg>
+                  Broadcast Emergency
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- EMERGENCY CONTROL VIEW -->
+      <section class="view" id="view-emergency">
+        <div class="view-head"><h2>Emergency Control</h2><span class="sub">MANUAL OVERRIDE &amp; SOS</span></div>
+        <div class="row-2">
+          <div class="card">
+            <div class="card-title"><h3>Emergency SOS</h3></div>
+            <div class="sos-panel">
+              <button class="sos-btn" id="sosBtnEmergency">EMERGENCY<br>SOS</button>
+              <div class="sos-note">Triggers emergency mode, alerts the rescue network and prioritizes life-support power. Persisted to database. Requires confirmation.</div>
+            </div>
+          </div>
+          <div class="stack">
+            <div class="card">
+              <div class="card-title"><h3>Emergency Mode Status</h3><span class="pill ok" id="emStatusPill">INACTIVE</span></div>
+              <p style="font-size:12.5px;color:var(--text-dim);line-height:1.6;">When activated, non-essential systems are disabled, chamber door locks, emergency lighting engages, and rescue coordination broadcasts the current beacon location on repeat.</p>
+              <div style="margin-top:14px;display:flex;gap:10px;">
+                <button class="btn" id="deactivateEmBtn">DEACTIVATE EMERGENCY MODE</button>
+              </div>
+            </div>
+            <div class="card">
+              <div class="card-title"><h3>System Priority Chain</h3></div>
+              <p style="font-family:var(--mono);font-size:11px;color:var(--text-dim);line-height:2;">
+                SENSORS &rarr; DISASTER DETECTION &rarr; LOCAL CONTROLLER &rarr; POWER PRIORITIZATION &rarr; LIFE SUPPORT PROTECTION &rarr; EMERGENCY COMMUNICATION &rarr; SURVIVAL MONITORING
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- HISTORY VIEW -->
+      <section class="view" id="view-history">
+        <div class="view-head"><h2>History Logs <span class="db-badge" style="margin-left:8px;font-size:11px;">SQLite Persistent</span></h2><span class="sub">FULL EVENT RECORD &mdash; SURVIVES RESTART</span></div>
+        <div class="card">
+          <div class="table-wrap">
+            <table><thead><tr><th>Time</th><th>Event</th><th>Status</th></tr></thead><tbody id="historyFull"></tbody></table>
+          </div>
+        </div>
+      </section>
+
+      <!-- SETTINGS VIEW -->
+      <section class="view" id="view-settings">
+        <div class="view-head">
+          <div>
+            <h2>Chamber System Settings</h2>
+            <span class="sub">MISSION CONTROL &bull; HARDWARE &bull; TELEMETRY &bull; CONFIGURATION</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;">
+            <span class="db-badge" id="settingsDbBadge">SQLITE PERSISTED</span>
+            <button class="btn sm" id="resetDefaultsBtn" title="Reset all settings to factory fail-safe values">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px;"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+              Factory Defaults
+            </button>
+          </div>
+        </div>
+
+        <!-- Topic Filter Navigation -->
+        <div class="topic-nav" id="topicNav">
+          <button class="topic-btn active" data-topic="all">All Topics</button>
+          <button class="topic-btn" data-topic="life">🫁 Life Support</button>
+          <button class="topic-btn" data-topic="power">⚡ Power & Grid</button>
+          <button class="topic-btn" data-topic="security">🔒 Blast & Security</button>
+          <button class="topic-btn" data-topic="comms">🛰️ Comms & Radar</button>
+          <button class="topic-btn" data-topic="hud">🖥️ HUD & Theme</button>
+          <button class="topic-btn" data-topic="database">💾 Blackbox & DB</button>
+        </div>
+
+        <!-- TOPIC 1: LIFE SUPPORT -->
+        <div class="settings-topic-card" data-topic-section="life">
+          <div class="settings-topic-head">
+            <div class="th-left">
+              <div class="th-icon">🫁</div>
+              <div>
+                <h3>Atmosphere & Life Support Systems</h3>
+                <div class="th-sub">OXYGEN ENRICHMENT &bull; CO2 SCRUBBERS &bull; AIR FILTRATION</div>
+              </div>
+            </div>
+            <span class="pill ok">STANDBY OK</span>
+          </div>
+          <div class="settings-row">
+            <div class="l">
+              <div class="t">Auto O₂ Enrichment Injection</div>
+              <div class="d">Auto-injects medical-grade O₂ reserve when cabin O₂ falls below 19.5%</div>
+            </div>
+            <div class="switch on" data-setting="auto_oxygen"></div>
+          </div>
+          <div class="settings-row">
+            <div class="l">
+              <div class="t">CO₂ Scrubber High-Flow Boost</div>
+              <div class="d">Runs chemical hydroxide scrubbers continuously during hazard alerts</div>
+            </div>
+            <div class="switch" data-setting="co2_scrub_boost"></div>
+          </div>
+          <div class="settings-row">
+            <div class="l">
+              <div class="t">HEPA & Carbon Filter Auto-Purge</div>
+              <div class="d">Performs reverse-pulse particulate purge every 12 hours</div>
+            </div>
+            <div class="switch on" data-setting="hepa_filter_purge"></div>
+          </div>
+          <div class="settings-row">
+            <div class="l">
+              <div class="t">Target Cabin Temperature</div>
+              <div class="d">Regulated by HVAC climate inverter loop</div>
+            </div>
+            <select class="settings-select" data-setting="target_temp">
+              <option value="18">18°C (Cool - Eco)</option>
+              <option value="20">20°C (Standard)</option>
+              <option value="22" selected>22°C (Optimal Comfort)</option>
+              <option value="24">24°C (Warm)</option>
+              <option value="26">26°C (Tropical)</option>
+            </select>
+          </div>
+          <div class="settings-row">
+            <div class="l">
+              <div class="t">Dehumidifier Smart Eco Mode</div>
+              <div class="d">Cycles compressor only when relative humidity exceeds 55%</div>
+            </div>
+            <div class="switch on" data-setting="dehumidifier_saver"></div>
+          </div>
+        </div>
+
+        <!-- TOPIC 2: POWER & ENERGY -->
+        <div class="settings-topic-card" data-topic-section="power">
+          <div class="settings-topic-head">
+            <div class="th-left">
+              <div class="th-icon">⚡</div>
+              <div>
+                <h3>Power Grid & Energy Optimization</h3>
+                <div class="th-sub">SOLAR ARRAY &bull; BATTERY STORAGE &bull; LOAD SHEDDING</div>
+              </div>
+            </div>
+            <span class="pill ok">ACTIVE</span>
+          </div>
+          <div class="settings-row">
+            <div class="l">
+              <div class="t">Smart Optimized Power Mode</div>
+              <div class="d">Auto-balances loads against solar input and predicts survival run-time</div>
+            </div>
+            <div class="switch on" data-setting="smart"></div>
+          </div>
+          <div class="settings-row">
+            <div class="l">
+              <div class="t">Critical Load Shedding Threshold</div>
+              <div class="d">Drops non-essential lighting & aux heaters when battery hits limit</div>
+            </div>
+            <div class="settings-slider-wrap">
+              <input type="range" class="settings-slider" min="15" max="40" step="5" value="25" data-setting="shed_threshold">
+              <span class="slider-val-badge" id="shedVal">25%</span>
+            </div>
+          </div>
+          <div class="settings-row">
+            <div class="l">
+              <div class="t">Solar Priority Storage Routing</div>
+              <div class="d">Directs 100% of solar photovoltaic harvest to emergency battery bank</div>
+            </div>
+            <div class="switch on" data-setting="solar_priority"></div>
+          </div>
+          <div class="settings-row">
+            <div class="l">
+              <div class="t">Exterior 24V Auxiliary Ports</div>
+              <div class="d">Power feed to exterior diagnostic equipment, drills, and secondary floodlights</div>
+            </div>
+            <div class="switch" data-setting="aux_ports"></div>
+          </div>
+        </div>
+
+        <!-- TOPIC 3: BLAST & SECURITY -->
+        <div class="settings-topic-card" data-topic-section="security">
+          <div class="settings-topic-head">
+            <div class="th-left">
+              <div class="th-icon">🔒</div>
+              <div>
+                <h3>Blast Security & Hull Protection</h3>
+                <div class="th-sub">PNEUMATIC SEALS &bull; ELECTROMAGNETIC LOCKS &bull; HULL DEFENSE</div>
+              </div>
+            </div>
+            <span class="pill warn">ARMED</span>
+          </div>
+          <div class="settings-row">
+            <div class="l">
+              <div class="t">Auto-Lock Blast Door on Threat</div>
+              <div class="d">Hermetically locks chamber blast hatch automatically upon hazard detection</div>
+            </div>
+            <div class="switch on" data-setting="autolock"></div>
+          </div>
+          <div class="settings-row">
+            <div class="l">
+              <div class="t">Pneumatic Hull Airtight Gaskets</div>
+              <div class="d">Inflates silicone gaskets to 2.4 bar during flood or hazardous gas alerts</div>
+            </div>
+            <div class="switch on" data-setting="air_seal"></div>
+          </div>
+          <div class="settings-row">
+            <div class="l">
+              <div class="t">Exterior SOS Optical Strobe Beacon</div>
+              <div class="d">High-intensity xenon rescue flash beacon atop external chamber periscope</div>
+            </div>
+            <div class="switch" data-setting="strobe_beacon"></div>
+          </div>
+          <div class="settings-row">
+            <div class="l">
+              <div class="t">Acoustic Warning Siren / PA Speaker</div>
+              <div class="d">Exterior 90dB siren sounds emergency alarm during active lockdown</div>
+            </div>
+            <div class="switch on" data-setting="siren_speaker"></div>
+          </div>
+          <div class="settings-row">
+            <div class="l">
+              <div class="t">Pressurized Air Curtain Barrier</div>
+              <div class="d">Downward laminar airflow barrier when access hatch seal is broken</div>
+            </div>
+            <div class="switch on" data-setting="emergency_curtain"></div>
+          </div>
+        </div>
+
+        <!-- TOPIC 4: COMMS & RADAR -->
+        <div class="settings-topic-card" data-topic-section="comms">
+          <div class="settings-topic-head">
+            <div class="th-left">
+              <div class="th-icon">🛰️</div>
+              <div>
+                <h3>Communications, GPS & Tactical Radar</h3>
+                <div class="th-sub">SATELLITE UPLINK &bull; VHF LORA MESH &bull; TACTICAL RADAR</div>
+              </div>
+            </div>
+            <span class="pill ok">ONLINE</span>
+          </div>
+          <div class="settings-row">
+            <div class="l">
+              <div class="t">Auto-Broadcast Distress Beacon (EPIRB)</div>
+              <div class="d">Transmits chamber GPS location to COSPAS-SARSAT satellite search grid</div>
+            </div>
+            <div class="switch on" data-setting="auto_distress"></div>
+          </div>
+          <div class="settings-row">
+            <div class="l">
+              <div class="t">VHF / LoRa Mesh Inter-Chamber Link</div>
+              <div class="d">Decentralized radio mesh to exchange status with neighboring rescue bunkers</div>
+            </div>
+            <div class="switch on" data-setting="mesh_radio"></div>
+          </div>
+          <div class="settings-row">
+            <div class="l">
+              <div class="t">Satellite Uplink Heartbeat Rate</div>
+              <div class="d">Telemetry upload frequency over low-earth-orbit satellite constellation</div>
+            </div>
+            <select class="settings-select" data-setting="sat_heartbeat">
+              <option value="1m">1 Minute (Emergency High-Speed)</option>
+              <option value="5m" selected>5 Minutes (Standard Operations)</option>
+              <option value="15m">15 Minutes (Low-Power Eco)</option>
+              <option value="30m">30 Minutes (Stealth Minimal)</option>
+            </select>
+          </div>
+          <div class="settings-row">
+            <div class="l">
+              <div class="t">Tactical Map Radar Sweep Overlay</div>
+              <div class="d">Displays dynamic Doppler hazard range circles on the Leaflet GPS map</div>
+            </div>
+            <div class="switch on" data-setting="radar_overlay"></div>
+          </div>
+          <div class="settings-row">
+            <div class="l">
+              <div class="t">Simulated Telemetry Generator</div>
+              <div class="d">Server-side realistic sensor drift & fluctuation for drills & tests</div>
+            </div>
+            <div class="switch on" data-setting="sim"></div>
+          </div>
+        </div>
+
+        <!-- TOPIC 5: HUD & DISPLAY -->
+        <div class="settings-topic-card" data-topic-section="hud">
+          <div class="settings-topic-head">
+            <div class="th-left">
+              <div class="th-icon">🖥️</div>
+              <div>
+                <h3>HUD Interface, Theme & Audio Prompts</h3>
+                <div class="th-sub">TACTICAL THEME &bull; EVA VOICE &bull; DISPLAY PREFERENCES</div>
+              </div>
+            </div>
+            <span class="pill ok">READY</span>
+          </div>
+          <div class="settings-row">
+            <div class="l">
+              <div class="t">Tactical HUD Color Theme</div>
+              <div class="d">Customizes interface palette for high-contrast visibility in dark conditions</div>
+            </div>
+            <select class="settings-select" data-setting="hud_theme" id="themeSelector">
+              <option value="cyber-dark" selected>Cyber Cyan (Standard Night)</option>
+              <option value="theme-amber">Tactical Amber (High Contrast)</option>
+              <option value="theme-emerald">Emerald Bunker (Night Vision Safe)</option>
+              <option value="theme-stealth">Deep Stealth (Minimal Glow)</option>
+            </select>
+          </div>
+          <div class="settings-row">
+            <div class="l">
+              <div class="t">Computer Voice Prompts (EVA Synthesizer)</div>
+              <div class="d">Speech synthesis announcements for scenario changes and critical alerts</div>
+            </div>
+            <div class="switch on" data-setting="eva_voice"></div>
+          </div>
+          <div class="settings-row">
+            <div class="l">
+              <div class="t">Audible Interface Chimes & Alarms</div>
+              <div class="d">Play sound tones on operator interactions and emergency notifications</div>
+            </div>
+            <div class="switch on" data-setting="audio"></div>
+          </div>
+          <div class="settings-row">
+            <div class="l">
+              <div class="t">Measurement Unit System</div>
+              <div class="d">Choose between Metric or Imperial telemetry units</div>
+            </div>
+            <select class="settings-select" data-setting="metric" id="unitSelector">
+              <option value="on" selected>Metric (°C, kPa, meters, Liters)</option>
+              <option value="off">Imperial (°F, PSI, feet, Gallons)</option>
+            </select>
+          </div>
+          <div class="settings-row">
+            <div class="l">
+              <div class="t">OLED Low-Power Screen Dimmer</div>
+              <div class="d">Dims control panel backlight after 5 minutes of operator inactivity</div>
+            </div>
+            <div class="switch" data-setting="oled_dim"></div>
+          </div>
+        </div>
+
+        <!-- TOPIC 6: BLACKBOX & DATABASE -->
+        <div class="settings-topic-card" data-topic-section="database">
+          <div class="settings-topic-head">
+            <div class="th-left">
+              <div class="th-icon">💾</div>
+              <div>
+                <h3>Chamber Blackbox & SQLite Database</h3>
+                <div class="th-sub">SENSOR LOGGING &bull; FLIGHT RECORDER &bull; AUDIT TRAIL</div>
+              </div>
+            </div>
+            <span class="pill ok">PERSISTED</span>
+          </div>
+          <div class="settings-row">
+            <div class="l">
+              <div class="t">Sensor Database Write Interval</div>
+              <div class="d">Frequency of recording telemetry snapshots into SQLite chamber.db</div>
+            </div>
+            <select class="settings-select" data-setting="poll_rate">
+              <option value="1s">1 Second (High Precision Blackbox)</option>
+              <option value="3s" selected>3 Seconds (Balanced Standard)</option>
+              <option value="5s">5 Seconds (Extended Mission)</option>
+              <option value="10s">10 Seconds (Ultra-Conservation)</option>
+            </select>
+          </div>
+          <div class="settings-row">
+            <div class="l">
+              <div class="t">Live SQLite Telemetry Metrics</div>
+              <div class="d">Current record volumes stored in local database</div>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+              <span class="db-stat-pill" id="statReadings">Readings: 0</span>
+              <span class="db-stat-pill" id="statHistory">History: 0</span>
+              <span class="db-stat-pill" id="statSos">SOS: 0</span>
+            </div>
+          </div>
+          <div class="settings-actions-bar">
+            <a href="/api/export/readings?format=csv" download class="btn sm">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              Export CSV
+            </a>
+            <a href="/api/export/readings?format=json" download class="btn sm">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              Export JSON
+            </a>
+            <button class="btn sm danger" id="clearLogsBtn">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px;"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+              Purge Sensor Log
+            </button>
+          </div>
+        </div>
+
+      </section>
+
+      <!-- FLOOD SAR & HUMAN SEARCH VIEW -->
+      <section class="view" id="view-flood">
+        <div class="view-head">
+          <div>
+            <h2>Flood SAR &amp; Human Search</h2>
+            <span class="sub">SEARCH &amp; RESCUE &bull; FLOOD WATER TRACKER &bull; TRIAGE &amp; SURVIVOR REGISTRY</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;">
+            <span class="pill crit" id="floodAlertPill" style="animation:pulse 2s infinite;">LEVEL 3 FLOOD INUNDATION</span>
+            <button class="btn primary" id="openAddSurvivorModal">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><path d="M12 5v14M5 12h14"/></svg>
+              Log Survivor / Missing Person
+            </button>
+          </div>
+        </div>
+
+        <!-- 4 KPI Summary Cards -->
+        <div class="grid-4" style="margin-bottom:18px;">
+          <div class="card">
+            <div class="k" style="font-family:var(--mono);font-size:9.5px;color:var(--text-faint);letter-spacing:.1em;">FLOOD WATER DEPTH</div>
+            <div class="v red" style="font-size:24px;margin-top:7px;" id="sarWaterDepth">2.3 <small style="font-size:13px;color:var(--text-dim);">meters</small></div>
+            <div class="foot"><span class="pill crit">RISING (+0.3m/h)</span></div>
+          </div>
+          <div class="card">
+            <div class="k" style="font-family:var(--mono);font-size:9.5px;color:var(--text-faint);letter-spacing:.1em;">TRAPPED IN FLOOD SECTORS</div>
+            <div class="v amber" style="font-size:24px;margin-top:7px;" id="sarTrappedCount">2 <small style="font-size:13px;color:var(--text-dim);">Humans</small></div>
+            <div class="foot"><span class="pill warn">EVAC STANDBY</span></div>
+          </div>
+          <div class="card">
+            <div class="k" style="font-family:var(--mono);font-size:9.5px;color:var(--text-faint);letter-spacing:.1em;">RESCUED IN CHAMBER</div>
+            <div class="v green" style="font-size:24px;margin-top:7px;" id="sarInChamberCount">2 <small style="font-size:13px;color:var(--text-dim);">Protected</small></div>
+            <div class="foot"><span class="pill ok">WATERTIGHT SECURE</span></div>
+          </div>
+          <div class="card">
+            <div class="k" style="font-family:var(--mono);font-size:9.5px;color:var(--text-faint);letter-spacing:.1em;">CRITICAL MEDICAL TRIAGE</div>
+            <div class="v purple" style="font-size:24px;margin-top:7px;" id="sarCriticalCount">1 <small style="font-size:13px;color:var(--text-dim);">High Priority</small></div>
+            <div class="foot"><span class="pill crit">MED INTERVENTION</span></div>
+          </div>
+        </div>
+
+        <!-- Search Bar & Filter Navigation -->
+        <div class="card" style="padding:16px 20px;margin-bottom:18px;">
+          <div class="sar-search-bar">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:18px;height:18px;color:var(--cyan);flex-shrink:0;"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input type="text" class="sar-search-input" id="sarSearchInput" placeholder="Search humans by Name, Blood Group (O+, A+), Medical Condition (Asthma, Diabetic), Sector, or RFID tag...">
+            <button class="btn sm" id="sarClearSearch" style="padding:4px 10px;">Clear</button>
+          </div>
+
+          <div class="sar-filter-nav" id="sarFilterNav">
+            <button class="sar-filter-btn active" data-filter="ALL">All Tracked</button>
+            <button class="sar-filter-btn" data-filter="TRAPPED">🌊 Trapped in Water</button>
+            <button class="sar-filter-btn" data-filter="CRITICAL_TRIAGE">🚨 Critical Medical Triage</button>
+            <button class="sar-filter-btn" data-filter="RESCUE_DISPATCHED">🚁 Rescue Dispatched</button>
+            <button class="sar-filter-btn" data-filter="IN_CHAMBER">🛡️ In Chamber</button>
+            <select class="settings-select" id="bloodFilterSelect" style="margin-left:auto;padding:4px 10px;font-size:11px;">
+              <option value="ALL">All Blood Types</option>
+              <option value="O+">Blood: O+</option>
+              <option value="A+">Blood: A+</option>
+              <option value="B+">Blood: B+</option>
+              <option value="AB+">Blood: AB+</option>
+              <option value="O-">Blood: O-</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Human Survivors Cards Grid -->
+        <div class="survivors-grid" id="survivorsGrid">
+          <!-- Dynamically populated from SQLite -->
+        </div>
+      </section>
+
+    </div>
+  </main>
+</div>
+
+<div class="toast-stack" id="toastStack"></div>
+
+<!-- ADD SURVIVOR / HUMAN LOG MODAL -->
+<div class="modal-overlay" id="addSurvivorModal">
+  <div class="modal" style="max-width:540px;text-align:left;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;border-bottom:1px solid var(--border);padding-bottom:10px;">
+      <h3 style="margin:0;font-size:16px;">Log Person / Flood Survivor</h3>
+      <button class="btn sm" id="closeAddSurvivorModal" style="padding:2px 8px;font-size:14px;">&times;</button>
+    </div>
+    <form id="addSurvivorForm" style="display:flex;flex-direction:column;gap:12px;">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+        <div>
+          <label style="font-family:var(--mono);font-size:10.5px;color:var(--text-faint);display:block;margin-bottom:4px;">FULL NAME *</label>
+          <input type="text" id="sfName" required placeholder="e.g. Elena Rostova" style="width:100%;padding:8px 10px;background:rgba(255,255,255,0.06);border:1px solid var(--border-strong);border-radius:8px;color:var(--text);font-family:var(--sans);font-size:13px;outline:none;">
+        </div>
+        <div>
+          <label style="font-family:var(--mono);font-size:10.5px;color:var(--text-faint);display:block;margin-bottom:4px;">AGE &amp; GENDER</label>
+          <div style="display:flex;gap:6px;">
+            <input type="number" id="sfAge" placeholder="Age" min="1" max="110" value="30" style="width:70px;padding:8px;background:rgba(255,255,255,0.06);border:1px solid var(--border-strong);border-radius:8px;color:var(--text);font-size:13px;outline:none;">
+            <select id="sfGender" class="settings-select" style="flex:1;">
+              <option value="Male">Male</option>
+              <option value="Female">Female</option>
+              <option value="Other">Other</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+        <div>
+          <label style="font-family:var(--mono);font-size:10.5px;color:var(--text-faint);display:block;margin-bottom:4px;">BLOOD GROUP</label>
+          <select id="sfBlood" class="settings-select" style="width:100%;">
+            <option value="O+">O+ (Universal RBC Recipient)</option>
+            <option value="A+">A+</option>
+            <option value="B+">B+</option>
+            <option value="AB+">AB+ (Universal Plasma)</option>
+            <option value="O-">O- (Universal Donor)</option>
+            <option value="A-">A-</option>
+            <option value="B-">B-</option>
+            <option value="AB-">AB-</option>
+          </select>
+        </div>
+        <div>
+          <label style="font-family:var(--mono);font-size:10.5px;color:var(--text-faint);display:block;margin-bottom:4px;">RESCUE STATUS</label>
+          <select id="sfStatus" class="settings-select" style="width:100%;">
+            <option value="TRAPPED">🌊 Trapped in Water / Rooftop</option>
+            <option value="CRITICAL_TRIAGE">🚨 Critical Medical Triage</option>
+            <option value="RESCUE_DISPATCHED">🚁 Rescue Boat / Drone Dispatched</option>
+            <option value="IN_CHAMBER">🛡️ Rescued (In DSC-01 Chamber)</option>
+          </select>
+        </div>
+      </div>
+
+      <div>
+        <label style="font-family:var(--mono);font-size:10.5px;color:var(--text-faint);display:block;margin-bottom:4px;">MEDICAL ALERTS &amp; VULNERABILITIES</label>
+        <input type="text" id="sfMedical" placeholder="e.g. Asthma - Needs Inhaler, Diabetic, Fracture, Hypothermia, None" style="width:100%;padding:8px 10px;background:rgba(255,255,255,0.06);border:1px solid var(--border-strong);border-radius:8px;color:var(--text);font-size:13px;outline:none;">
+      </div>
+
+      <div style="display:grid;grid-template-columns:2fr 1fr;gap:10px;">
+        <div>
+          <label style="font-family:var(--mono);font-size:10.5px;color:var(--text-faint);display:block;margin-bottom:4px;">FLOOD SECTOR / LOCATION</label>
+          <input type="text" id="sfSector" placeholder="e.g. Sector Alpha (Rooftop Block 2)" style="width:100%;padding:8px 10px;background:rgba(255,255,255,0.06);border:1px solid var(--border-strong);border-radius:8px;color:var(--text);font-size:13px;outline:none;">
+        </div>
+        <div>
+          <label style="font-family:var(--mono);font-size:10.5px;color:var(--text-faint);display:block;margin-bottom:4px;">WATER DEPTH (M)</label>
+          <input type="number" step="0.1" id="sfWaterDepth" placeholder="1.8" value="1.8" style="width:100%;padding:8px 10px;background:rgba(255,255,255,0.06);border:1px solid var(--border-strong);border-radius:8px;color:var(--text);font-size:13px;outline:none;">
+        </div>
+      </div>
+
+      <div>
+        <label style="font-family:var(--mono);font-size:10.5px;color:var(--text-faint);display:block;margin-bottom:4px;">EMERGENCY CONTACT &amp; NOTES</label>
+        <input type="text" id="sfContact" placeholder="Phone or Family contact &amp; triage notes" style="width:100%;padding:8px 10px;background:rgba(255,255,255,0.06);border:1px solid var(--border-strong);border-radius:8px;color:var(--text);font-size:13px;outline:none;">
+      </div>
+
+      <div style="display:flex;gap:10px;margin-top:10px;">
+        <button type="button" class="btn" id="cancelAddSurvivor" style="flex:1;justify-content:center;">Cancel</button>
+        <button type="submit" class="btn primary" style="flex:1;justify-content:center;">Save Person to SQLite</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="modal-overlay" id="sosModal">
+  <div class="modal">
+    <div class="mi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4m0 4h.01M10.3 3.9 2.5 17a2 2 0 0 0 1.7 3h15.6a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg></div>
+    <h3>Confirm Emergency SOS</h3>
+    <p>This will broadcast your location to the rescue network, lock the chamber, and switch all systems into critical emergency mode. This event will be <strong>saved to the database</strong>. Confirm to proceed.</p>
+    <div class="modal-actions">
+      <button class="btn" id="cancelSos">Cancel</button>
+      <button class="btn danger" id="confirmSos">Activate SOS</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ============================================================
+   SOCKET.IO CONNECTION
+============================================================ */
+const socket = io();
+let state = null;
+let historyLog = [];
+let startTime = Date.now();
+
+// Connection status
+const connDot    = document.getElementById('connDot');
+const connStatus = document.getElementById('connStatus');
+
+socket.on('connect', () => {
+  connDot.classList.add('live');
+  connStatus.textContent = 'LIVE';
+  toast('ok', 'Backend Connected', 'Real-time sync established. Data persisted in SQLite.');
+});
+socket.on('disconnect', () => {
+  connDot.classList.remove('live');
+  connStatus.textContent = 'OFFLINE';
+  toast('warn', 'Connection Lost', 'Attempting to reconnect...');
+});
+
+// Receive initial full state from server
+socket.on('state:init', (s) => {
+  state = s;
+  startTime = Date.now() - (s.uptime || 0);
+  renderAll();
+  initChartsIfNeeded();
+});
+
+// Receive real-time state updates
+socket.on('state:update', (s) => {
+  state = s;
+  renderAll();
+  if (charts.temp) {
+    pushData(charts.temp, s.temp);
+    pushData(charts.humidity, s.humidity);
+    pushData(charts.oxygen, s.oxygen);
+    pushData(charts.co2, s.co2);
+    pushData(charts.power, s.consumption);
+    charts.power.data.datasets[1].data.push(s.solar);
+    charts.power.data.datasets[1].data.shift();
+    charts.power.update('none');
+  }
+  updateMapBeacon(s);
+});
+
+// Receive initial history from server (from DB)
+socket.on('history:init', (rows) => {
+  historyLog = rows.map(r => ({ t: r.ts.slice(11,19), event: r.event, status: r.status }));
+  renderHistory();
+});
+
+// Receive new history event
+socket.on('history:new', (entry) => {
+  historyLog.unshift({ t: entry.ts.slice(11,19), event: entry.event, status: entry.status });
+  if (historyLog.length > 60) historyLog.pop();
+  renderHistory();
+});
+
+// SOS activated event
+socket.on('sos:activated', (data) => {
+  if (mapMarker) {
+    mapMarker.setIcon(sosIcon);
+    liveMap.setView([data.lat, data.lng], 14);
+  }
+  loadSosHistory();
+  toast('crit', 'SOS Activated & Saved', `Location broadcast: ${data.lat.toFixed(4)}, ${data.lng.toFixed(4)}`);
+});
+
+/* ============================================================
+   UTILITIES
+============================================================ */
+function pad(n) { return n.toString().padStart(2,'0'); }
+function fmtTime(d) {
+  let h=d.getHours(), m=d.getMinutes(), s=d.getSeconds();
+  let ap=h>=12?'PM':'AM'; let h12=h%12; if(h12===0)h12=12;
+  return `${pad(h12)}:${pad(m)}:${pad(s)} ${ap}`;
+}
+function fmtDate(d) {
+  return d.toLocaleDateString('en-US',{weekday:'short',year:'numeric',month:'short',day:'numeric'});
+}
+function clamp(v,mn,mx){ return Math.max(mn,Math.min(mx,v)); }
+function rand(mn,mx){ return Math.random()*(mx-mn)+mn; }
+
+function toast(type, title, desc) {
+  const stack = document.getElementById('toastStack');
+  const el = document.createElement('div');
+  el.className = 'toast ' + type;
+  el.innerHTML = `<div class="tt">${title}</div><div class="td">${desc}</div>`;
+  stack.appendChild(el);
+  setTimeout(() => el.remove(), 4100);
+}
+
+function addHistoryServer(event, status) {
+  fetch('/api/history', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ event, status })
+  });
+}
+
+/* ============================================================
+   CLOCK
+============================================================ */
+function tickClock() {
+  const now = new Date();
+  document.getElementById('timeVal').textContent = fmtTime(now);
+  document.getElementById('dateVal').textContent = fmtDate(now);
+  const upMs = Date.now() - startTime;
+  const uh=Math.floor(upMs/3600000), um=Math.floor((upMs%3600000)/60000), us=Math.floor((upMs%60000)/1000);
+  document.getElementById('uptimeVal').textContent = `${pad(uh)}:${pad(um)}:${pad(us)}`;
+}
+setInterval(tickClock, 1000); tickClock();
+
+/* ============================================================
+   NAVIGATION
+============================================================ */
+const navlinks = document.querySelectorAll('.navlink');
+const views    = document.querySelectorAll('.view');
+const sidebar  = document.getElementById('sidebar');
+const scrim    = document.getElementById('scrim');
+
+navlinks.forEach(link => {
+  link.addEventListener('click', e => {
+    e.preventDefault();
+    navlinks.forEach(l => l.classList.remove('active'));
+    link.classList.add('active');
+    views.forEach(sec => sec.classList.remove('active'));
+    document.getElementById('view-' + link.dataset.view).classList.add('active');
+    sidebar.classList.remove('open'); scrim.classList.remove('show');
+    if (link.dataset.view === 'comms') setTimeout(() => liveMap && liveMap.invalidateSize(), 100);
+    if (link.dataset.view === 'history') loadFullHistory();
+  });
+});
+document.getElementById('sidebarToggle').addEventListener('click', () => {
+  sidebar.classList.toggle('open'); scrim.classList.toggle('show');
+});
+scrim.addEventListener('click', () => { sidebar.classList.remove('open'); scrim.classList.remove('show'); });
+
+/* ============================================================
+   RENDER FUNCTIONS
+============================================================ */
+function renderAll() {
+  if (!state) return;
+  renderOverview(); renderSensors(); renderAlerts(); renderEssentials(); renderPower(); renderLifeSupport(); renderStatusChip();
+}
+
+function renderOverview() {
+  const map = { SAFE:'green', WARNING:'amber', CRITICAL:'red' };
+  const el = document.getElementById('overallStatusVal');
+  el.textContent = state.overall;
+  el.className = 'v ' + (map[state.overall] || 'green');
+  document.getElementById('overallPill').textContent = state.overall === 'SAFE' ? 'NOMINAL' : state.overall;
+  document.getElementById('overallPill').className = 'pill ' + (state.overall==='SAFE'?'ok':state.overall==='WARNING'?'warn':'crit');
+  document.getElementById('occupancyVal').innerHTML = `${pad(state.occupancy.cur)} <small>/ ${pad(state.occupancy.max)}</small>`;
+  document.getElementById('survivalVal').innerHTML = `${Math.round(state.survivalHours)} <small>hrs</small>`;
+  document.getElementById('batteryVal').textContent = Math.round(state.battery) + '%';
+  document.getElementById('battMini').textContent = Math.round(state.battery) + '%';
+  const ring = document.getElementById('batteryRing');
+  const offset = 132 - (132 * state.battery / 100);
+  ring.style.strokeDashoffset = offset;
+  ring.style.stroke = state.battery < 20 ? 'var(--red)' : state.battery < 45 ? 'var(--amber)' : 'var(--green)';
+  document.getElementById('chargeFoot').textContent = state.solar > state.consumption
+    ? `Charging · +${state.solar}W solar` : `Discharging · ${Math.round(state.consumption - state.solar)}W deficit`;
+  document.getElementById('tempVal').innerHTML = state.temp.toFixed(1) + '&deg;C';
+  const tempOk = state.temp >= 18 && state.temp <= 28;
+  document.getElementById('tempPill').textContent = tempOk ? 'NORMAL' : 'WATCH';
+  document.getElementById('tempPill').className = 'pill ' + (tempOk ? 'ok' : 'warn');
+  document.getElementById('aqiVal').innerHTML = Math.round(state.aqi) + ' <small>AQI</small>';
+  const aqiGood = state.aqi <= 50;
+  document.getElementById('aqiPill').textContent = aqiGood ? 'GOOD' : 'MODERATE';
+  document.getElementById('aqiPill').className = 'pill ' + (aqiGood ? 'ok' : 'warn');
+  document.getElementById('doorTag').textContent = state.doorLocked ? 'DOOR LOCKED' : 'DOOR UNLOCKED';
+  document.getElementById('chamberStatusVal').textContent = state.chamberStatus;
+  document.getElementById('pressureVal').textContent = state.pressure.toFixed(2) + ' atm';
+  document.getElementById('oxygenMini').textContent = state.oxygen.toFixed(1) + '%';
+}
+
+const sensorLabels = {
+  quake:{ ok:'NO ACTIVITY', warn:'MINOR TREMOR DETECTED', crit:'SEVERE SEISMIC ACTIVITY' },
+  water:{ ok:'NORMAL · 0.2m', warn:'RISING · 1.4m', crit:'CRITICAL · 3.1m' },
+  fire: { ok:'NO THREAT', warn:'SMOKE TRACE DETECTED', crit:'FIRE DETECTED' },
+  gas:  { ok:'NO GAS DETECTED', warn:'TRACE GAS DETECTED', crit:'GAS LEAK CRITICAL' }
+};
+function renderSensors() {
+  if (!state) return;
+  ['quake','water','fire','gas'].forEach(key => {
+    const st = state.sensors[key];
+    const label = sensorLabels[key][st];
+    [`dot-${key}`,`dot-${key}2`].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.className = 'sensor-dot ' + st;
+    });
+    [`txt-${key}`,`txt-${key}2`].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = label;
+    });
+  });
+  const anyBad = Object.values(state.sensors).some(s => s !== 'ok');
+  document.querySelector('[data-view="safety"]').classList.toggle('alerting', anyBad);
+  // Update map marker color
+  if (liveMap && mapMarker) {
+    mapMarker.setIcon(state.emergency ? sosIcon : chamberIcon);
+    if (sosCircle) {
+      sosCircle.setStyle({ color: state.emergency ? '#ff4462' : '#19e6a0' });
+    }
+  }
+}
+
+function renderAlerts() {
+  const defs = [
+    { key:'sys', label:'SYSTEM STATUS', ok:'All systems normal' },
+    { key:'water', label:'WATER LEVEL', ok:'Normal' },
+    { key:'fire', label:'FIRE / SMOKE', ok:'No threat detected' },
+    { key:'gas', label:'GAS LEAKAGE', ok:'No gas detected' },
+    { key:'quake', label:'EARTHQUAKE', ok:'No critical activity' },
+  ];
+  function stateFor(key) {
+    if (key === 'sys') return Object.values(state.sensors).some(s=>s==='crit')?'crit':Object.values(state.sensors).some(s=>s==='warn')?'warn':'ok';
+    return state.sensors[key] || 'ok';
+  }
+  const okIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M20 6 9 17l-5-5"/></svg>';
+  const warnIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 9v4m0 4h.01M10.3 3.9 2.5 17a2 2 0 0 0 1.7 3h15.6a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>';
+  let html = '';
+  defs.forEach(d => {
+    const s = stateFor(d.key);
+    const text = s==='ok' ? d.ok : (sensorLabels[d.key] ? sensorLabels[d.key][s] : 'Attention required');
+    html += `<div class="alert-item"><div class="alert-ic ${s}">${s==='ok'?okIcon:warnIcon}</div><div class="alert-txt"><div class="t">${d.label}</div><div class="d">${text}</div></div></div>`;
+  });
+  document.getElementById('alertsList').innerHTML = html;
+  document.getElementById('alertsList2').innerHTML = html;
+}
+
+function renderEssentials() {
+  if (!state) return;
+  const e = state.essentials;
+  document.getElementById('waterPct').textContent = Math.round(e.water) + '%';
+  document.getElementById('waterBar').style.width = e.water + '%';
+  document.getElementById('waterEst').textContent = `≈ ${(e.water/13).toFixed(1)} days remaining`;
+  document.getElementById('foodPct').textContent = Math.round(e.food) + '%';
+  document.getElementById('foodBar').style.width = e.food + '%';
+  document.getElementById('foodEst').textContent = `≈ ${(e.food/14).toFixed(1)} days remaining`;
+  document.getElementById('medPct').textContent = Math.round(e.med) + '%';
+  document.getElementById('medBar').style.width = e.med + '%';
+  document.getElementById('sanPct').textContent = Math.round(e.san) + '%';
+  document.getElementById('sanBar').style.width = e.san + '%';
+  document.getElementById('sanEst').textContent = `≈ ${(e.san/20).toFixed(1)} days remaining`;
+}
+
+const loadColors = { life:'var(--green)', vent:'var(--cyan)', sec:'var(--purple)', light:'var(--amber)', aux:'var(--text-dim)' };
+const loadNames  = { life:'Life Support', vent:'Ventilation & Rebreather', sec:'Security & Pneumatics', light:'Lighting', aux:'Auxiliary & Entertainment' };
+const loadCrit   = { life:true, vent:true, sec:true, light:false, aux:false };
+
+function renderPower() {
+  if (!state) return;
+  document.getElementById('solarVal').textContent = state.solar + ' W';
+  document.getElementById('voltVal').textContent = state.voltage.toFixed(1) + ' V';
+  document.getElementById('consumptionVal').textContent = Math.round(state.consumption) + ' W';
+  document.getElementById('chargingVal').textContent = state.solar >= state.consumption ? 'CHARGING' : 'DISCHARGING';
+  document.getElementById('chargingVal').className = 'v ' + (state.solar >= state.consumption ? 'green' : 'amber');
+  let html = '';
+  Object.keys(state.loads).forEach(key => {
+    const pct = state.loads[key];
+    html += `<div class="pbar-row"><div class="pbar-label"><span class="name"><span class="dot" style="background:${loadColors[key]}"></span>${loadNames[key]} <span class="pill ${loadCrit[key]?'ok':'warn'}" style="margin-left:6px;">${loadCrit[key]?'CRITICAL':'NON-CRITICAL'}</span></span><span class="pct">${Math.round(pct)}%</span></div><div class="pbar-track"><div class="pbar-fill" style="width:${pct}%;background:${loadColors[key]};"></div></div></div>`;
+  });
+  document.getElementById('powerBars').innerHTML = html;
+  document.getElementById('aiLoad').textContent = Math.round(state.consumption) + ' W';
+  document.getElementById('aiAvail').textContent = state.solar + ' W';
+  document.getElementById('aiSurvival').textContent = Math.round(state.survivalHours) + ' Hours';
+  document.getElementById('aiSaving').textContent = Math.round(state.savingPct) + '%';
+}
+
+function renderLifeSupport() {
+  if (!state) return;
+  document.getElementById('lsTemp').innerHTML = state.temp.toFixed(1) + '&deg;C';
+  document.getElementById('lsHumidity').textContent = Math.round(state.humidity) + '%';
+  document.getElementById('lsOxygen').textContent = state.oxygen.toFixed(1) + '%';
+  document.getElementById('lsCo2').textContent = Math.round(state.co2) + ' ppm';
+  document.getElementById('lsAqiVal').innerHTML = Math.round(state.aqi) + ' <small style="font-size:13px;color:var(--text-dim);">AQI</small>';
+}
+
+function renderHistory() {
+  const rowsFull = historyLog.slice(0,60).map(h =>
+    `<tr><td>${h.t}</td><td>${h.event}</td><td><span class="pill ${pillClass(h.status)}">${h.status.toUpperCase()}</span></td></tr>`
+  ).join('');
+  const histFull = document.getElementById('historyFull');
+  if (histFull) histFull.innerHTML = rowsFull;
+  const rowsMini = historyLog.slice(0,6).map(h =>
+    `<tr><td>${h.t}</td><td>${h.event}</td><td><span class="pill ${pillClass(h.status)}">${h.status.toUpperCase()}</span></td></tr>`
+  ).join('');
+  document.getElementById('historyMini').innerHTML = rowsMini;
+}
+
+function pillClass(status) {
+  status = (status||'').toLowerCase();
+  return status==='safe'||status==='ok'||status==='normal'||status==='good'||status==='active'?'ok':status==='warning'||status==='warn'?'warn':'crit';
+}
+
+function renderStatusChip() {
+  if (!state) return;
+  document.getElementById('statusChipText').textContent = state.emergency ? 'CRITICAL' : 'ONLINE';
+  document.body.classList.toggle('emergency', state.emergency);
+  document.getElementById('emStatusPill').textContent = state.emergency ? 'ACTIVE' : 'INACTIVE';
+  document.getElementById('emStatusPill').className = 'pill ' + (state.emergency ? 'crit' : 'ok');
+}
+
+async function loadFullHistory() {
+  try {
+    const resp = await fetch('/api/history?limit=60');
+    const rows = await resp.json();
+    historyLog = rows.map(r => ({ t: r.ts.slice(11,19), event: r.event, status: r.status }));
+    renderHistory();
+  } catch(e) {}
+}
+
+async function loadSosHistory() {
+  try {
+    const resp = await fetch('/api/sos');
+    const rows = await resp.json();
+    const el = document.getElementById('sosHistoryList');
+    if (!el) return;
+    if (!rows.length) { el.innerHTML = 'No SOS events recorded.'; return; }
+    el.innerHTML = rows.map(r =>
+      `<div style="padding:6px 0;border-bottom:1px solid var(--border);">
+        <span style="color:var(--red);">&#9888;</span>
+        <span style="color:var(--text);margin-left:6px;">${r.ts.slice(0,19)}</span><br>
+        <span style="color:var(--text-faint);margin-left:16px;">Lat: ${(r.lat||0).toFixed(4)} · Lng: ${(r.lng||0).toFixed(4)}</span>
+      </div>`
+    ).join('');
+  } catch(e) {}
+}
+
+/* ============================================================
+   LEAFLET MAP
+============================================================ */
+let liveMap = null;
+let mapMarker = null;
+let rescue04  = null;
+let rescue11  = null;
+let sosCircle = null;
+
+// Default location: Chennai, India
+let chamberLat = 13.0827;
+let chamberLng = 80.2707;
+
+// Custom icons
+const chamberIcon = L.divIcon({
+  className: '',
+  html: `<div style="position:relative;width:28px;height:28px;">
+    <div style="width:28px;height:28px;border-radius:50%;background:rgba(25,230,160,0.2);border:2px solid #19e6a0;display:flex;align-items:center;justify-content:center;font-size:12px;">🏛️</div>
+    <div class="beacon-pulse" style="position:absolute;top:-6px;left:-6px;width:40px;height:40px;"></div>
+  </div>`,
+  iconSize: [28,28],
+  iconAnchor: [14,14]
+});
+
+const sosIcon = L.divIcon({
+  className: '',
+  html: `<div style="position:relative;width:32px;height:32px;">
+    <div style="width:32px;height:32px;border-radius:50%;background:rgba(255,68,98,0.3);border:2px solid #ff4462;display:flex;align-items:center;justify-content:center;font-size:14px;">🆘</div>
+    <div class="beacon-pulse emergency" style="position:absolute;top:-8px;left:-8px;width:48px;height:48px;"></div>
+  </div>`,
+  iconSize: [32,32],
+  iconAnchor: [16,16]
+});
+
+const rescueIcon = L.divIcon({
+  className: '',
+  html: `<div style="width:22px;height:22px;border-radius:50%;background:rgba(51,199,255,0.25);border:2px solid #33c7ff;display:flex;align-items:center;justify-content:center;font-size:11px;">🚁</div>`,
+  iconSize: [22,22],
+  iconAnchor: [11,11]
+});
+
+function initMap(lat, lng) {
+  chamberLat = lat;
+  chamberLng = lng;
+
+  liveMap = L.map('liveMap', { zoomControl: true, attributionControl: true }).setView([lat, lng], 14);
+
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; <a href="https://openstreetmap.org/copyright">OpenStreetMap</a>',
+    maxZoom: 19
+  }).addTo(liveMap);
+
+  // Chamber marker
+  mapMarker = L.marker([lat, lng], { icon: chamberIcon })
+    .addTo(liveMap)
+    .bindPopup(`<b style="color:#19e6a0;font-family:monospace;">DSC-01</b><br><span style="font-family:monospace;font-size:11px;">${lat.toFixed(4)}N, ${lng.toFixed(4)}E</span><br><span style="font-size:11px;">Survival Chamber · ACTIVE</span>`)
+    .openPopup();
+
+  // Beacon circle
+  sosCircle = L.circle([lat, lng], {
+    color: '#19e6a0', fillColor: '#19e6a0', fillOpacity: 0.06,
+    weight: 1.5, dashArray: '6 4', radius: 500
+  }).addTo(liveMap);
+
+  // Rescue team markers
+  rescue04 = L.marker([lat + 0.022, lng + 0.037], { icon: rescueIcon })
+    .addTo(liveMap)
+    .bindPopup('<b style="color:#33c7ff;font-family:monospace;">RESCUE-04</b><br><span style="font-size:11px;">Helicopter Unit · En Route</span>');
+
+  rescue11 = L.marker([lat - 0.045, lng - 0.028], { icon: rescueIcon })
+    .addTo(liveMap)
+    .bindPopup('<b style="color:#33c7ff;font-family:monospace;">RESCUE-11</b><br><span style="font-size:11px;">Ground Team · Standby</span>');
+
+  // Draw line from chamber to rescue teams
+  L.polyline([[lat, lng], [lat+0.022, lng+0.037]], { color:'#33c7ff', weight:1, dashArray:'4 8', opacity:0.4 }).addTo(liveMap);
+  L.polyline([[lat, lng], [lat-0.045, lng-0.028]], { color:'#33c7ff', weight:1, dashArray:'4 8', opacity:0.4 }).addTo(liveMap);
+
+  // Update coordinates display
+  document.getElementById('mapCoords').textContent = `${lat.toFixed(4)}°N, ${lng.toFixed(4)}°E · BEACON ACTIVE`;
+
+  // Update server with location
+  fetch('/api/location', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ lat, lng })
+  });
+}
+
+function updateMapBeacon(s) {
+  if (!liveMap || !mapMarker) return;
+  const icon = s.emergency ? sosIcon : chamberIcon;
+  mapMarker.setIcon(icon);
+  if (sosCircle) {
+    sosCircle.setStyle({
+      color: s.emergency ? '#ff4462' : '#19e6a0',
+      fillColor: s.emergency ? '#ff4462' : '#19e6a0'
+    });
+  }
+  document.getElementById('mapCoords').textContent = s.emergency
+    ? 'SOS BROADCASTING · BEACON REPEATING'
+    : `${chamberLat.toFixed(4)}°N, ${chamberLng.toFixed(4)}°E · BEACON ACTIVE`;
+}
+
+// Initialize map with default or browser location
+window.addEventListener('load', () => {
+  // Try browser geolocation first
+  if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(
+      (pos) => initMap(pos.coords.latitude, pos.coords.longitude),
+      () => initMap(13.0827, 80.2707) // fallback to Chennai
+    );
+  } else {
+    initMap(13.0827, 80.2707);
+  }
+  loadSosHistory();
+});
+
+// Locate Me button
+document.getElementById('locateMeBtn').addEventListener('click', () => {
+  if (!navigator.geolocation) { toast('warn', 'Geolocation Unavailable', 'Browser does not support location access.'); return; }
+  navigator.geolocation.getCurrentPosition((pos) => {
+    const lat = pos.coords.latitude, lng = pos.coords.longitude;
+    chamberLat = lat; chamberLng = lng;
+    if (liveMap && mapMarker) {
+      mapMarker.setLatLng([lat, lng]);
+      liveMap.setView([lat, lng], 14);
+      if (sosCircle) sosCircle.setLatLng([lat, lng]);
+      document.getElementById('mapCoords').textContent = `${lat.toFixed(4)}°N, ${lng.toFixed(4)}°E · LOCATED`;
+      fetch('/api/location', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ lat, lng })
+      });
+      toast('ok', 'Location Updated', `Chamber pinned at ${lat.toFixed(4)}, ${lng.toFixed(4)}`);
+    }
+  }, () => toast('warn', 'Location Denied', 'Cannot access device location.'));
+});
+
+/* ============================================================
+   CHARTS
+============================================================ */
+Chart.defaults.color = '#7d93a3';
+Chart.defaults.font.family = "'JetBrains Mono', monospace";
+Chart.defaults.font.size = 9;
+
+const charts = {};
+let chartsInit = false;
+
+function sparkline(ctx, color, initial) {
+  return new Chart(ctx, {
+    type: 'line',
+    data: { labels: Array(20).fill(''), datasets: [{ data: initial, borderColor: color, backgroundColor: color+'22', borderWidth: 2, pointRadius: 0, tension: 0.4, fill: true }] },
+    options: { responsive: true, maintainAspectRatio: false, animation: { duration: 400 },
+      plugins: { legend: { display: false }, tooltip: { enabled: false } },
+      scales: { x: { display: false }, y: { display: false } }
+    }
+  });
+}
+
+function pushData(chart, val) {
+  chart.data.datasets[0].data.push(val);
+  chart.data.datasets[0].data.shift();
+  chart.update('none');
+}
+
+function initChartsIfNeeded() {
+  if (chartsInit) return;
+  chartsInit = true;
+  if (!state) return;
+  charts.temp     = sparkline(document.getElementById('chartTemp'),     '#19e6a0', Array(20).fill(state.temp));
+  charts.humidity = sparkline(document.getElementById('chartHumidity'), '#33c7ff', Array(20).fill(state.humidity));
+  charts.oxygen   = sparkline(document.getElementById('chartOxygen'),   '#19e6a0', Array(20).fill(state.oxygen));
+  charts.co2      = sparkline(document.getElementById('chartCo2'),      '#ffb138', Array(20).fill(state.co2));
+  charts.power = new Chart(document.getElementById('powerChart'), {
+    type: 'line',
+    data: { labels: Array(30).fill(''), datasets: [
+      { label: 'Consumption (W)', data: Array(30).fill(state.consumption), borderColor: '#ff9f43', backgroundColor: '#ff9f4322', borderWidth: 2, pointRadius: 0, tension: .4, fill: true },
+      { label: 'Solar Input (W)',  data: Array(30).fill(state.solar),       borderColor: '#19e6a0', backgroundColor: 'transparent', borderWidth: 2, pointRadius: 0, tension: .4 }
+    ]},
+    options: { responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: true, position: 'top', labels: { boxWidth: 10, boxHeight: 10, font: { size: 10 } } }, tooltip: { enabled: true } },
+      scales: { x: { display: false }, y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { font: { size: 9 } } } }
+    }
+  });
+}
+
+/* ============================================================
+   SCENARIO SIMULATOR — sends to server
+============================================================ */
+const scenarioBtns = document.querySelectorAll('.scenario-btn');
+scenarioBtns.forEach(btn => {
+  btn.addEventListener('click', () => {
+    const scn = btn.dataset.scn;
+    scenarioBtns.forEach(b => b.classList.toggle('active', b.dataset.scn === scn));
+    socket.emit('client:scenario', { scenario: scn });
+    const labels = { normal:'Normal Mode Restored', earthquake:'Seismic Activity Detected', flood:'Rising Water Detected', fire:'Fire Detected', gas:'Gas Leakage Detected', powerfail:'Power Failure' };
+    toast(scn==='normal'?'ok':scn==='flood'||scn==='powerfail'?'warn':'crit', labels[scn]||scn, 'Scenario applied — server updated & persisted.');
+  });
+});
+
+/* ============================================================
+   POWER OPTIMIZATION
+============================================================ */
+document.getElementById('runOptimizeBtn').addEventListener('click', function() {
+  this.disabled = true;
+  const original = this.innerHTML;
+  this.innerHTML = 'OPTIMIZING…';
+  setTimeout(() => {
+    fetch('/api/state', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        savingPct: Math.min((state?.savingPct||18) + 5, 60)
+      })
+    });
+    addHistoryServer('Power Optimization Run', 'SAFE');
+    document.getElementById('aiRecommendation').textContent = 'Optimization complete — non-critical loads reduced further, extending survival time and reserving power for life support.';
+    toast('ok', 'Optimization Complete', `Energy saving increased · survival extended.`);
+    this.disabled = false;
+    this.innerHTML = original;
+  }, 1200);
+});
+
+/* ============================================================
+   SOS — sends to server (persisted in DB)
+============================================================ */
+const sosModal = document.getElementById('sosModal');
+
+function openSos() { sosModal.classList.add('show'); }
+document.getElementById('sosBtn').addEventListener('click', openSos);
+document.getElementById('sendSosCommsBtn').addEventListener('click', openSos);
+document.getElementById('sosBtnEmergency').addEventListener('click', openSos);
+document.getElementById('cancelSos').addEventListener('click', () => sosModal.classList.remove('show'));
+
+document.getElementById('confirmSos').addEventListener('click', async () => {
+  sosModal.classList.remove('show');
+  const lat = chamberLat, lng = chamberLng;
+  try {
+    await fetch('/api/sos', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ lat, lng, message: 'Emergency SOS — user confirmed' })
+    });
+    document.getElementById('rescueStatus').textContent = 'NOTIFIED';
+    document.getElementById('lastComm').textContent = new Date().toTimeString().slice(0,8);
+    document.getElementById('beaconStatus').textContent = 'SOS MODE';
+  } catch(e) {
+    toast('crit', 'SOS Error', 'Could not reach server. Check connection.');
+  }
+});
+
+document.getElementById('deactivateEmBtn').addEventListener('click', () => {
+  socket.emit('client:scenario', { scenario: 'normal' });
+  scenarioBtns.forEach(b => b.classList.toggle('active', b.dataset.scn === 'normal'));
+  document.getElementById('rescueStatus').textContent = 'CONNECTED';
+  document.getElementById('beaconStatus').textContent = 'ACTIVE';
+  toast('ok', 'Emergency Mode Deactivated', 'Systems restored to standard operation.');
+});
+
+/* ============================================================
+   SETTINGS CONTROLLER & MULTI-TOPIC MANAGER
+============================================================ */
+// 1. Topic Navigation Tabs
+const topicBtns = document.querySelectorAll('.topic-btn');
+const topicCards = document.querySelectorAll('.settings-topic-card');
+
+topicBtns.forEach(btn => {
+  btn.addEventListener('click', () => {
+    topicBtns.forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    const target = btn.dataset.topic;
+
+    topicCards.forEach(card => {
+      if (target === 'all' || card.dataset.topicSection === target) {
+        card.style.display = 'block';
+      } else {
+        card.style.display = 'none';
+      }
+    });
+  });
+});
+
+// 2. Settings Persistence & Socket Sync
+async function updateSetting(key, val) {
+  try {
+    await fetch('/api/settings', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ [key]: val })
+    });
+    toast('ok', 'Setting Saved (SQLite)', `${key} &rarr; ${val}`);
+  } catch(e) {
+    toast('crit', 'Settings Sync Failed', e.message);
+  }
+}
+
+// Switches
+document.querySelectorAll('.switch').forEach(sw => {
+  sw.addEventListener('click', () => {
+    sw.classList.toggle('on');
+    const key = sw.dataset.setting;
+    const val = sw.classList.contains('on') ? 'on' : 'off';
+    updateSetting(key, val);
+
+    // Audio cue
+    if (key === 'audio' && val === 'on') {
+      toast('ok', 'Audio Enabled', 'Chamber tactical audio interface online.');
+    }
+  });
+});
+
+// Dropdowns
+document.querySelectorAll('.settings-select').forEach(sel => {
+  sel.addEventListener('change', () => {
+    const key = sel.dataset.setting;
+    const val = sel.value;
+    updateSetting(key, val);
+
+    if (key === 'hud_theme') {
+      applyTheme(val);
+    }
+  });
+});
+
+// Slider (Load Shedding)
+const shedSlider = document.querySelector('input[data-setting="shed_threshold"]');
+const shedBadge  = document.getElementById('shedVal');
+if (shedSlider && shedBadge) {
+  shedSlider.addEventListener('input', (e) => {
+    shedBadge.textContent = `${e.target.value}%`;
+  });
+  shedSlider.addEventListener('change', (e) => {
+    updateSetting('shed_threshold', e.target.value);
+  });
+}
+
+// Tactical Theme Applier
+function applyTheme(themeName) {
+  document.body.classList.remove('theme-amber', 'theme-emerald', 'theme-stealth');
+  if (themeName && themeName !== 'cyber-dark') {
+    document.body.classList.add(themeName);
+  }
+}
+
+// Load Initial Settings from Server (SQLite)
+async function loadServerSettings() {
+  try {
+    const res = await fetch('/api/settings');
+    const settings = await res.json();
+
+    // Populate switches
+    document.querySelectorAll('.switch[data-setting]').forEach(sw => {
+      const k = sw.dataset.setting;
+      if (settings[k] !== undefined) {
+        sw.classList.toggle('on', settings[k] === 'on');
+      }
+    });
+
+    // Populate selects
+    document.querySelectorAll('.settings-select[data-setting]').forEach(sel => {
+      const k = sel.dataset.setting;
+      if (settings[k] !== undefined) {
+        sel.value = settings[k];
+      }
+    });
+
+    // Populate slider
+    if (settings['shed_threshold'] && shedSlider && shedBadge) {
+      shedSlider.value = settings['shed_threshold'];
+      shedBadge.textContent = `${settings['shed_threshold']}%`;
+    }
+
+    // Apply active theme
+    if (settings['hud_theme']) {
+      applyTheme(settings['hud_theme']);
+    }
+
+  } catch(e) {
+    console.warn('[Settings] Failed to fetch settings:', e);
+  }
+}
+
+// Load DB Stats
+async function refreshDbStats() {
+  try {
+    const res = await fetch('/api/stats');
+    const stats = await res.json();
+    const rEl = document.getElementById('statReadings');
+    const hEl = document.getElementById('statHistory');
+    const sEl = document.getElementById('statSos');
+    if (rEl) rEl.textContent = `Readings: ${stats.readings || 0}`;
+    if (hEl) hEl.textContent = `History: ${stats.history || 0}`;
+    if (sEl) sEl.textContent = `SOS: ${stats.sos || 0}`;
+  } catch(e) {}
+}
+
+// Reset Defaults Handler
+const resetBtn = document.getElementById('resetDefaultsBtn');
+if (resetBtn) {
+  resetBtn.addEventListener('click', async () => {
+    if (!confirm('Restore all DSC-01 system settings to factory defaults?')) return;
+    try {
+      const res = await fetch('/api/settings/reset', { method: 'POST' });
+      const data = await res.json();
+      await loadServerSettings();
+      toast('ok', 'Settings Reset', 'Factory fail-safe defaults restored in SQLite.');
+    } catch(e) {
+      toast('crit', 'Reset Error', e.message);
+    }
+  });
+}
+
+// Purge Sensor Log Handler
+const clearBtn = document.getElementById('clearLogsBtn');
+if (clearBtn) {
+  clearBtn.addEventListener('click', async () => {
+    if (!confirm('Purge all logged sensor history records from SQLite database?')) return;
+    try {
+      const res = await fetch('/api/logs/clear', { method: 'POST' });
+      const data = await res.json();
+      historyLog = [];
+      renderHistoryFull();
+      await refreshDbStats();
+      toast('warn', 'Database Purged', 'Sensor telemetry logs cleared.');
+    } catch(e) {
+      toast('crit', 'Purge Error', e.message);
+    }
+  });
+}
+
+// Socket Realtime sync on settings update from other sessions
+socket.on('settings:updated', (newSettings) => {
+  Object.entries(newSettings).forEach(([k, v]) => {
+    const sw = document.querySelector(`.switch[data-setting="${k}"]`);
+    if (sw) sw.classList.toggle('on', v === 'on');
+    const sel = document.querySelector(`.settings-select[data-setting="${k}"]`);
+    if (sel) sel.value = v;
+    if (k === 'hud_theme') applyTheme(v);
+  });
+});
+
+// Temperature Card Click Handler (Flowchart Implementation)
+const cardTemp = document.getElementById('cardTemp');
+if (cardTemp) {
+  cardTemp.addEventListener('click', async () => {
+    try {
+      toast('info', 'Temperature Touch', 'Requesting sensor reading from backend...');
+      const res = await fetch('/api/temperature/check');
+      const data = await res.json();
+      if (data.status === 'NORMAL') {
+        toast('ok', `Temperature NORMAL (${data.temp}°C)`, 'Safe threshold (18°C - 26°C). Continuing monitoring.');
+      } else {
+        toast('crit', `HIGH TEMP ALERT (${data.temp}°C)`, 'Cooling system auto-engaged (ON). Logged to database.');
+      }
+      refreshDbStats();
+    } catch(e) {
+      toast('crit', 'API Error', e.message);
+    }
+  });
+}
+
+/* ============================================================
+   FLOOD SAR & HUMAN SEARCH CONTROLLER
+============================================================ */
+let currentSarFilter = 'ALL';
+let currentBloodFilter = 'ALL';
+let sarSearchQuery = '';
+let survivorMarkers = [];
+
+async function loadSurvivors() {
+  const grid = document.getElementById('survivorsGrid');
+  if (!grid) return;
+
+  try {
+    const params = new URLSearchParams();
+    if (sarSearchQuery.trim()) params.append('q', sarSearchQuery.trim());
+    if (currentSarFilter !== 'ALL') params.append('status', currentSarFilter);
+    if (currentBloodFilter !== 'ALL') params.append('blood', currentBloodFilter);
+
+    const [survivorsRes, summaryRes] = await Promise.all([
+      fetch(`/api/survivors?${params.toString()}`),
+      fetch('/api/flood/summary')
+    ]);
+
+    const survivors = await survivorsRes.json();
+    const summary   = await summaryRes.json();
+
+    // Update KPI indicators
+    const wEl = document.getElementById('sarWaterDepth');
+    const tEl = document.getElementById('sarTrappedCount');
+    const iEl = document.getElementById('sarInChamberCount');
+    const cEl = document.getElementById('sarCriticalCount');
+    const bEl = document.getElementById('sarCountBadge');
+
+    if (wEl) wEl.innerHTML = `${summary.waterLevelM || 2.3} <small style="font-size:13px;color:var(--text-dim);">meters</small>`;
+    if (tEl) tEl.innerHTML = `${summary.trapped || 0} <small style="font-size:13px;color:var(--text-dim);">Humans</small>`;
+    if (iEl) iEl.innerHTML = `${summary.inChamber || 0} <small style="font-size:13px;color:var(--text-dim);">Protected</small>`;
+    if (cEl) cEl.innerHTML = `${summary.critical || 0} <small style="font-size:13px;color:var(--text-dim);">High Priority</small>`;
+    if (bEl) bEl.textContent = summary.total || survivors.length;
+
+    // Render cards
+    if (survivors.length === 0) {
+      grid.innerHTML = `
+        <div style="grid-column:1/-1;text-align:center;padding:40px 20px;background:var(--panel);border:1px dashed var(--border);border-radius:14px;">
+          <div style="font-size:28px;margin-bottom:8px;">🔍</div>
+          <div style="font-size:15px;font-weight:600;">No humans found matching search criteria</div>
+          <div style="font-size:12px;color:var(--text-faint);margin-top:4px;">Try clearing filters or search query</div>
+        </div>`;
+      return;
+    }
+
+    grid.innerHTML = survivors.map(s => {
+      const statusClass = {
+        'TRAPPED': 'status-trapped',
+        'RESCUE_DISPATCHED': 'status-dispatched',
+        'IN_CHAMBER': 'status-inchamber',
+        'CRITICAL_TRIAGE': 'status-critical'
+      }[s.rescue_status] || 'status-trapped';
+
+      const avatarClass = {
+        'TRAPPED': 'trapped',
+        'RESCUE_DISPATCHED': 'dispatched',
+        'IN_CHAMBER': 'inchamber',
+        'CRITICAL_TRIAGE': 'critical'
+      }[s.rescue_status] || '';
+
+      const statusLabel = {
+        'TRAPPED': '🌊 TRAPPED IN WATER',
+        'RESCUE_DISPATCHED': '🚁 RESCUE EN ROUTE',
+        'IN_CHAMBER': '🛡️ IN CHAMBER (SAFE)',
+        'CRITICAL_TRIAGE': '🚨 CRITICAL TRIAGE'
+      }[s.rescue_status] || s.rescue_status;
+
+      const initials = s.name.split(' ').map(n=>n[0]).join('').slice(0,2).toUpperCase();
+
+      return `
+        <div class="survivor-card ${statusClass}" data-id="${s.id}">
+          <div class="sc-head">
+            <div class="sc-user">
+              <div class="sc-avatar ${avatarClass}">${initials}</div>
+              <div>
+                <div class="sc-name">${escapeHtml(s.name)}</div>
+                <div class="sc-rfid">${s.rfid_tag || 'RFID-TAG'} &bull; ${s.gender || 'Unknown'}, ${s.age || '--'} yrs</div>
+              </div>
+            </div>
+            <span class="pill ${s.rescue_status === 'IN_CHAMBER' ? 'ok' : s.rescue_status === 'CRITICAL_TRIAGE' ? 'crit' : 'warn'}">${statusLabel}</span>
+          </div>
+
+          <div class="sc-tags">
+            <span class="sc-tag blood">🩸 Blood: ${s.blood_group || 'Unknown'}</span>
+            <span class="sc-tag water">🌊 Flood Water: ${s.water_depth_m}m</span>
+            ${s.medical_alerts && s.medical_alerts !== 'None' ? `<span class="sc-tag med">⚠️ Med: ${escapeHtml(s.medical_alerts)}</span>` : `<span class="sc-tag">✅ Med: Healthy</span>`}
+          </div>
+
+          <div class="sc-details">
+            <div class="row-item">
+              <span class="k">LOCATION / SECTOR:</span>
+              <span class="v">${escapeHtml(s.flood_sector || 'General Sector')}</span>
+            </div>
+            <div class="row-item">
+              <span class="k">GPS COORDINATES:</span>
+              <span class="v" style="font-family:var(--mono);">${s.lat.toFixed(4)}°N, ${s.lng.toFixed(4)}°E</span>
+            </div>
+            <div class="row-item">
+              <span class="k">EMERGENCY CONTACT:</span>
+              <span class="v">${escapeHtml(s.contact_info || 'Radio Frequency VHF-CH16')}</span>
+            </div>
+            ${s.notes ? `
+            <div class="row-item" style="margin-top:4px;border-top:1px dashed var(--border);padding-top:4px;">
+              <span class="k">TRIAGE NOTES:</span>
+              <span class="v" style="color:var(--text);font-style:italic;">${escapeHtml(s.notes)}</span>
+            </div>` : ''}
+          </div>
+
+          <div class="sc-actions">
+            ${s.rescue_status !== 'IN_CHAMBER' ? `
+              <button class="btn sm ok" onclick="admitSurvivor(${s.id}, '${escapeHtml(s.name)}')">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px;"><path d="M12 22s8-4 8-11V5l-8-3-8 3v6c0 7 8 11 8 11z"/></svg>
+                Admit to Chamber
+              </button>` : ''}
+            ${s.rescue_status === 'TRAPPED' ? `
+              <button class="btn sm primary" onclick="dispatchRescue(${s.id}, '${escapeHtml(s.name)}')">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px;"><path d="m13 2-2 2.5V8l-6 4v2l6-2v4l-2 1.5v1.5l3.5-1 3.5 1v-1.5L14 16v-4l6 2v-2l-6-4V4.5L12 2z"/></svg>
+                Dispatch Drone/Boat
+              </button>` : ''}
+            <button class="btn sm" onclick="locateSurvivorOnMap(${s.lat}, ${s.lng}, '${escapeHtml(s.name)}', '${escapeHtml(s.flood_sector)}')">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px;"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+              GPS Pin
+            </button>
+            <button class="btn sm danger" onclick="deleteSurvivor(${s.id})" title="Remove person from manifest">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px;"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>
+            </button>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    // Also update GPS Map with survivor markers
+    updateMapSurvivorPins(survivors);
+
+  } catch(e) {
+    console.warn('[Flood SAR] Failed to load survivors:', e);
+  }
+}
+
+function escapeHtml(str) {
+  if (!str) return '';
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// Action operations
+window.dispatchRescue = async function(id, name) {
+  try {
+    await fetch(`/api/survivors/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ rescue_status: 'RESCUE_DISPATCHED' })
+    });
+    toast('warn', 'Rescue Dispatched', `SAR Unit & Hovercraft dispatched for ${name}`);
+    loadSurvivors();
+  } catch(e) {
+    toast('crit', 'Dispatch Error', e.message);
+  }
+};
+
+window.admitSurvivor = async function(id, name) {
+  try {
+    await fetch(`/api/survivors/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ rescue_status: 'IN_CHAMBER' })
+    });
+    toast('ok', 'Survivor Admitted', `${name} is securely inside DSC-01 Chamber.`);
+    loadSurvivors();
+  } catch(e) {
+    toast('crit', 'Admission Error', e.message);
+  }
+};
+
+window.deleteSurvivor = async function(id) {
+  if (!confirm('Remove this person record from the SAR database?')) return;
+  try {
+    await fetch(`/api/survivors/${id}`, { method: 'DELETE' });
+    toast('info', 'Record Removed', 'Survivor record removed from database.');
+    loadSurvivors();
+  } catch(e) {
+    toast('crit', 'Delete Error', e.message);
+  }
+};
+
+window.locateSurvivorOnMap = function(lat, lng, name, sector) {
+  // Switch to Comms view
+  const commsLink = document.querySelector('.navlink[data-view="comms"]');
+  if (commsLink) commsLink.click();
+
+  setTimeout(() => {
+    if (map) {
+      map.setView([lat, lng], 16);
+      L.popup()
+        .setLatLng([lat, lng])
+        .setContent(`<div style="font-family:sans-serif;font-size:12px;color:#0b1926;"><b>🌊 ${name}</b><br/>${sector}<br/>GPS: ${lat.toFixed(4)}, ${lng.toFixed(4)}</div>`)
+        .openOn(map);
+      toast('info', 'GPS Pin Located', `Centered map on ${name} in ${sector}`);
+    }
+  }, 250);
+};
+
+function updateMapSurvivorPins(survivors) {
+  if (!map) return;
+  // Clear old markers
+  survivorMarkers.forEach(m => map.removeLayer(m));
+  survivorMarkers = [];
+
+  survivors.forEach(s => {
+    if (s.lat && s.lng) {
+      const markerColor = s.rescue_status === 'IN_CHAMBER' ? '#19e6a0' : s.rescue_status === 'CRITICAL_TRIAGE' ? '#a855f7' : '#ff4462';
+      const m = L.circleMarker([s.lat, s.lng], {
+        radius: 8,
+        fillColor: markerColor,
+        color: '#fff',
+        weight: 1.5,
+        opacity: 1,
+        fillOpacity: 0.85
+      }).addTo(map);
+
+      m.bindPopup(`
+        <div style="font-family:sans-serif;font-size:12px;color:#0b1926;">
+          <b>${escapeHtml(s.name)}</b> (Blood: ${s.blood_group})<br/>
+          Status: <b>${s.rescue_status}</b><br/>
+          Sector: ${escapeHtml(s.flood_sector)}<br/>
+          Water Depth: ${s.water_depth_m}m
+        </div>
+      `);
+      survivorMarkers.push(m);
+    }
+  });
+}
+
+// Search & Filter event listeners
+const searchInput = document.getElementById('sarSearchInput');
+let searchDebounceTimer;
+if (searchInput) {
+  searchInput.addEventListener('input', (e) => {
+    clearTimeout(searchDebounceTimer);
+    searchDebounceTimer = setTimeout(() => {
+      sarSearchQuery = e.target.value;
+      loadSurvivors();
+    }, 250);
+  });
+}
+
+const clearSearchBtn = document.getElementById('sarClearSearch');
+if (clearSearchBtn) {
+  clearSearchBtn.addEventListener('click', () => {
+    if (searchInput) searchInput.value = '';
+    sarSearchQuery = '';
+    loadSurvivors();
+  });
+}
+
+const sarFilterBtns = document.querySelectorAll('.sar-filter-btn');
+sarFilterBtns.forEach(btn => {
+  btn.addEventListener('click', () => {
+    sarFilterBtns.forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    currentSarFilter = btn.dataset.filter;
+    loadSurvivors();
+  });
+});
+
+const bloodFilterSelect = document.getElementById('bloodFilterSelect');
+if (bloodFilterSelect) {
+  bloodFilterSelect.addEventListener('change', (e) => {
+    currentBloodFilter = e.target.value;
+    loadSurvivors();
+  });
+}
+
+// Add Survivor Modal Logic
+const addModal = document.getElementById('addSurvivorModal');
+const openAddBtn = document.getElementById('openAddSurvivorModal');
+const closeAddBtn = document.getElementById('closeAddSurvivorModal');
+const cancelAddBtn = document.getElementById('cancelAddSurvivor');
+const addForm = document.getElementById('addSurvivorForm');
+
+if (openAddBtn && addModal) {
+  openAddBtn.addEventListener('click', () => addModal.classList.add('show'));
+}
+if (closeAddBtn && addModal) {
+  closeAddBtn.addEventListener('click', () => addModal.classList.remove('show'));
+}
+if (cancelAddBtn && addModal) {
+  cancelAddBtn.addEventListener('click', () => addModal.classList.remove('show'));
+}
+
+if (addForm) {
+  addForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const payload = {
+      name: document.getElementById('sfName').value,
+      age: document.getElementById('sfAge').value,
+      gender: document.getElementById('sfGender').value,
+      blood_group: document.getElementById('sfBlood').value,
+      rescue_status: document.getElementById('sfStatus').value,
+      medical_alerts: document.getElementById('sfMedical').value,
+      flood_sector: document.getElementById('sfSector').value,
+      water_depth_m: document.getElementById('sfWaterDepth').value,
+      contact_info: document.getElementById('sfContact').value,
+      lat: chamberLat + (Math.random() - 0.5) * 0.006,
+      lng: chamberLng + (Math.random() - 0.5) * 0.006
+    };
+
+    try {
+      const res = await fetch('/api/survivors', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      addModal.classList.remove('show');
+      addForm.reset();
+      toast('ok', 'Person Logged in SQLite', `${payload.name} added to Flood SAR manifest.`);
+      loadSurvivors();
+    } catch(err) {
+      toast('crit', 'Save Failed', err.message);
+    }
+  });
+}
+
+// Inline Direct Form Submission Handler
+const inlineForm = document.getElementById('inlineSurvivorForm');
+if (inlineForm) {
+  inlineForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const nameEl   = document.getElementById('inName');
+    const ageEl    = document.getElementById('inAge');
+    const genderEl = document.getElementById('inGender');
+    const bloodEl  = document.getElementById('inBlood');
+    const statusEl = document.getElementById('inStatus');
+    const medEl    = document.getElementById('inMedical');
+    const secEl    = document.getElementById('inSector');
+    const depthEl  = document.getElementById('inWaterDepth');
+    const contEl   = document.getElementById('inContact');
+
+    const payload = {
+      name: nameEl.value.trim(),
+      age: ageEl.value ? parseInt(ageEl.value) : 30,
+      gender: genderEl.value,
+      blood_group: bloodEl.value,
+      rescue_status: statusEl.value,
+      medical_alerts: medEl.value.trim() || 'None',
+      flood_sector: secEl.value.trim() || 'General Flood Zone',
+      water_depth_m: depthEl.value ? parseFloat(depthEl.value) : 1.5,
+      contact_info: contEl.value.trim() || 'Radio VHF-CH16',
+      lat: chamberLat + (Math.random() - 0.5) * 0.007,
+      lng: chamberLng + (Math.random() - 0.5) * 0.007
+    };
+
+    try {
+      const res = await fetch('/api/survivors', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      inlineForm.reset();
+      toast('ok', 'Human Registered (SQLite)', `${payload.name} saved with status: ${payload.rescue_status}`);
+      loadSurvivors();
+    } catch(err) {
+      toast('crit', 'Registration Error', err.message);
+    }
+  });
+}
+
+// Socket listener
+socket.on('survivors:updated', () => {
+  loadSurvivors();
+});
+
+// Boot survivors
+loadSurvivors();
+
+// Boot settings and stats
+loadServerSettings();
+refreshDbStats();
+setInterval(refreshDbStats, 10000);
+</script>
+</body>
+</html>
