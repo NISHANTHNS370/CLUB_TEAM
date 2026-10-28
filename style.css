@@ -20,6 +20,50 @@
 }
 
 
+*{
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    cursor: pointer;
+    outline: none;
+}
+.pixel-container .pixel{
+    position: absolute;
+    width: 10px;
+    height: 10px;
+    pointer-events: none;
+    background: var(--clr);
+    transition: transform 0.5s ease , opacity 0.5s ease;
+*{
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    cursor: pointer;
+    outline: none;
+}
+.pixel-container .pixel{
+    position: absolute;
+    width: 10px;
+    height: 10px;
+    pointer-events: none;
+    background: var(--clr);
+    transition: transform 0.5s ease , opacity 0.5s ease;
+}
+
+.pixel-btn:hover .pixel{
+    opacity: 0;
+    transform: translate(var(--tx),var(--ty));
+}
+
+
+
+}
+
+.pixel-btn:hover .pixel{
+    opacity: 0;
+    transform: translate(var(--tx),var(--ty));
+}
+
+
+
 
 
 
