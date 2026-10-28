@@ -2,22 +2,7 @@
 *{
     padding: 0px;
     margin: 0px;
-    box-sizing: border-box;
-}
-
-body{
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    min-height: 100vh;
-    gap : 50px;
-    background: #151f28;
-}
-
-.pixel-btn{
-    position: relative;
-    width: 180px;
-    height: 60px;
+    box-sizing: border-box;0px;
     border: none;
     background: #333;
     color: white;
